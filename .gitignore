@@ -1,0 +1,22 @@
+# Node/Bun
+node_modules/
+
+# Bun lockfile should be versioned (do not ignore bun.lock)
+
+# Rust/Tauri build artifacts
+src-tauri/target/
+
+# VS Code workspace local history
+.vscode/*.code-workspace
+
+# OS / editor files
+.DS_Store
+Thumbs.db
+*.log
+
+# Optional local env files
+.env
+.env.local
+
+# Tauri generated bundles (if produced in project tree)
+src-tauri/gen/schemas/*.tmp

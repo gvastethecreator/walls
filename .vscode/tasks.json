@@ -1,0 +1,121 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "wallpaper: tauri dev",
+            "type": "shell",
+            "command": "bunx",
+            "args": [
+                "tauri",
+                "dev"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "isBackground": true,
+            "problemMatcher": []
+        },
+        {
+            "label": "wallpaper: tauri build",
+            "type": "shell",
+            "command": "bunx",
+            "args": [
+                "tauri",
+                "build"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "group": "build",
+            "problemMatcher": []
+        },
+        {
+            "label": "wallpaper: cargo check",
+            "type": "shell",
+            "command": "cargo",
+            "args": [
+                "check"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}/src-tauri"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "wallpaper: cargo test (lib)",
+            "type": "shell",
+            "command": "cargo",
+            "args": [
+                "test",
+                "--lib"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}/src-tauri"
+            },
+            "group": "test",
+            "problemMatcher": []
+        },
+        {
+            "label": "wallpaper: smoke tests",
+            "type": "shell",
+            "command": "cargo",
+            "args": [
+                "test",
+                "--lib",
+                "profiles::tests::profile_roundtrip_save_load_list_delete",
+                "tests::get_image_data_url_reads_file_and_returns_data_url"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}/src-tauri"
+            },
+            "group": "test",
+            "problemMatcher": []
+        },
+        {
+            "label": "wallpaper: test + check",
+            "type": "shell",
+            "command": "cargo test --lib; cargo check",
+            "options": {
+                "cwd": "${workspaceFolder}/src-tauri"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "wallpaper: kill running app",
+            "type": "shell",
+            "command": "taskkill",
+            "args": [
+                "/F",
+                "/IM",
+                "wallpaper-manager.exe"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "wallpaper: full verify",
+            "dependsOrder": "sequence",
+            "dependsOn": [
+                "wallpaper: cargo test (lib)",
+                "wallpaper: cargo check",
+                "wallpaper: tauri build"
+            ],
+            "problemMatcher": []
+        },
+        {
+            "label": "wallpaper: bun verify",
+            "type": "shell",
+            "command": "bun",
+            "args": [
+                "run",
+                "verify"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": []
+        }
+    ]
+}
