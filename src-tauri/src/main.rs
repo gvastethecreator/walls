@@ -7,6 +7,8 @@ use wallpaper::WallpaperConfig;
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use std::fs;
 use std::path::Path;
+use std::time::Duration;
+use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
 
 #[tauri::command]
 fn get_monitors() -> Result<Vec<wallpaper::MonitorInfo>, String> {
@@ -100,6 +102,53 @@ fn clear_logs() -> Result<(), String> {
     logger::clear_logs()
 }
 
+#[tauri::command]
+fn identify_monitors(app: tauri::AppHandle) -> Result<(), String> {
+    logger::log_event("backend", "identify_monitors called");
+
+    let monitors = wallpaper::get_monitors()?;
+    if monitors.is_empty() {
+        return Err("No monitors detected".to_string());
+    }
+
+    let mut labels = Vec::new();
+    for monitor in &monitors {
+        let label = format!("identify-{}", monitor.display_index);
+        labels.push(label.clone());
+
+        if let Some(existing) = app.get_webview_window(&label) {
+            let _ = existing.close();
+        }
+
+        let url = format!("identify.html?n={}", monitor.display_index);
+        let _window = WebviewWindowBuilder::new(&app, &label, WebviewUrl::App(url.into()))
+            .decorations(false)
+            .shadow(false)
+            .transparent(true)
+            .always_on_top(true)
+            .resizable(false)
+            .skip_taskbar(true)
+            .focused(false)
+            .visible(true)
+            .position(monitor.x as f64, monitor.y as f64)
+            .inner_size(monitor.width as f64, monitor.height as f64)
+            .build()
+            .map_err(|e| format!("Failed to create identify window {}: {}", label, e))?;
+    }
+
+    let app_for_close = app.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(1800));
+        for label in labels {
+            if let Some(window) = app_for_close.get_webview_window(&label) {
+                let _ = window.close();
+            }
+        }
+    });
+
+    Ok(())
+}
+
 fn guess_mime_from_path(path: &str) -> &'static str {
     let ext = Path::new(path)
         .extension()
@@ -151,6 +200,7 @@ fn main() {
             log_client_event,
             get_logs,
             clear_logs,
+            identify_monitors,
             get_image_data_url,
         ])
         .run(tauri::generate_context!())

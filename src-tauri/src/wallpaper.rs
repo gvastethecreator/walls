@@ -6,6 +6,7 @@ use std::path::PathBuf;
 use crate::logger;
 use windows::core::{HSTRING, PCWSTR};
 use windows::Win32::Foundation::LPARAM;
+use windows::Win32::Foundation::RECT;
 use windows::Win32::Graphics::Gdi::{
     EnumDisplayMonitors, GetMonitorInfoW, HDC, HMONITOR, MONITORINFOEXW,
 };
@@ -24,6 +25,7 @@ const SOLID_PREFIX: &str = "__SOLID__:";
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MonitorInfo {
     pub id: String,
+    pub display_index: u32,
     pub name: String,
     pub width: u32,
     pub height: u32,
@@ -134,7 +136,13 @@ fn write_solid_bmp(path: &PathBuf, r: u8, g: u8, b: u8) -> Result<(), String> {
 fn resolve_image_path_marker(image_path: &str) -> Result<Option<String>, String> {
     let trimmed = image_path.trim();
     if trimmed.is_empty() || trimmed == NONE_MARKER {
-        return Ok(None);
+        // "No background" fallback for Windows: set a black bitmap explicitly,
+        // since empty wallpaper can keep previous image depending on shell state.
+        let path = solid_cache_dir()?.join("solid_none_black.bmp");
+        if !path.exists() {
+            write_solid_bmp(&path, 0, 0, 0)?;
+        }
+        return Ok(Some(path.to_string_lossy().to_string()));
     }
 
     if let Some(hex) = trimmed.strip_prefix(SOLID_PREFIX) {
@@ -274,16 +282,24 @@ pub fn get_monitors() -> Result<Vec<MonitorInfo>, String> {
             &format!("Monitor index={} wallpaper='{}'", i, current_wp),
         );
 
-        // Match with display info (by index fallback)
-        let (_name, x, y, w, h) = if i < display_names.len() as u32 {
-            let d = &display_names[i as usize];
-            (d.0.clone(), d.1, d.2, d.3, d.4)
-        } else {
-            (format!("Monitor {}", i + 1), 0, 0, 1920, 1080)
-        };
+        // Always resolve monitor geometry from IDesktopWallpaper monitor ID
+        // to avoid index/order mismatches with GDI enumeration.
+        let monitor_rect = unsafe { dw.GetMonitorRECT(PCWSTR(monitor_hstr.as_ptr())) }
+            .unwrap_or(RECT {
+                left: 0,
+                top: 0,
+                right: 1920,
+                bottom: 1080,
+            });
+
+        let x = monitor_rect.left;
+        let y = monitor_rect.top;
+        let w = (monitor_rect.right - monitor_rect.left).max(0) as u32;
+        let h = (monitor_rect.bottom - monitor_rect.top).max(0) as u32;
 
         monitors.push(MonitorInfo {
             id: id_str,
+            display_index: i + 1,
             name: format!("Monitor {} ({}x{})", i + 1, w, h),
             width: w,
             height: h,
@@ -301,6 +317,7 @@ pub fn get_monitors() -> Result<Vec<MonitorInfo>, String> {
         for (i, (_device, x, y, w, h)) in display_names.iter().enumerate() {
             monitors.push(MonitorInfo {
                 id: format!("GDI_MONITOR_{}", i + 1),
+                display_index: (i + 1) as u32,
                 name: format!("Monitor {} ({}x{})", i + 1, w, h),
                 width: *w,
                 height: *h,
@@ -375,14 +392,15 @@ pub fn apply_configuration(configs: &[WallpaperConfig]) -> Result<(), String> {
         }
     }
 
-    // Apply the fit mode from the last config that has one
-    if let Some(last) = configs.last() {
-        let position = fit_str_to_position(&last.fit_mode);
+    // NOTE: IDesktopWallpaper position is global (not per-monitor).
+    // Use first config deterministically after all wallpapers are assigned.
+    if let Some(first) = configs.first() {
+        let position = fit_str_to_position(&first.fit_mode);
         unsafe {
             dw.SetPosition(position)
                 .map_err(|e| format!("SetPosition failed: {}", e))?;
         }
-        logger::log_event("wallpaper", &format!("SetPosition from last fit='{}'", last.fit_mode));
+        logger::log_event("wallpaper", &format!("SetPosition from first fit='{}'", first.fit_mode));
     }
 
     logger::log_event("wallpaper", "apply_configuration success");
@@ -407,8 +425,8 @@ mod tests {
 
     #[test]
     fn resolves_none_and_passthrough_markers() {
-        assert_eq!(resolve_image_path_marker("" ).unwrap(), None);
-        assert_eq!(resolve_image_path_marker("__NONE__").unwrap(), None);
+        assert!(resolve_image_path_marker("" ).unwrap().is_some());
+        assert!(resolve_image_path_marker("__NONE__").unwrap().is_some());
 
         let regular = r"C:\\wallpapers\\sample.png";
         assert_eq!(

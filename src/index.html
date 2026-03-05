@@ -17,19 +17,66 @@
           <line x1="12" y1="17" x2="12" y2="21" />
         </svg>
         <h1>Wallpaper Manager</h1>
+        <span id="status-summary" class="status-summary">Loading monitors...</span>
       </div>
       <div class="header-actions">
-        <button id="btn-apply" class="btn btn-primary" title="Apply Configuration">
+        <button id="btn-refresh" class="btn btn-ghost" title="Refresh Monitors">
           <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
-            <polyline points="20 6 9 17 4 12" />
+            <polyline points="23 4 23 10 17 10" />
+            <polyline points="1 20 1 14 7 14" />
+            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
           </svg>
-          Apply Configuration
+          Refresh
         </button>
       </div>
     </header>
 
+    <!-- Top Menu Bar -->
+    <section class="top-menu">
+      <div class="profile-controls">
+        <select id="profile-select" class="select">
+          <option value="">— Select Profile —</option>
+        </select>
+        <button id="btn-load-profile" class="btn btn-secondary" title="Load Profile">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+            <polyline points="7 10 12 15 17 10" />
+            <line x1="12" y1="15" x2="12" y2="3" />
+          </svg>
+          Load Profile
+        </button>
+        <button id="btn-save-profile" class="btn btn-secondary" title="Save Profile">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+            <polyline points="17 21 17 13 7 13 7 21" />
+            <polyline points="7 3 7 8 15 8" />
+          </svg>
+          Save Profile
+        </button>
+        <button id="btn-delete-profile" class="btn btn-danger" title="Delete Profile">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="3 6 5 6 21 6" />
+            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+          </svg>
+        </button>
+        <button id="btn-view-logs" class="btn btn-secondary" title="View Logs">View Logs</button>
+        <button id="btn-clear-logs" class="btn btn-secondary" title="Clear Logs">Clear Logs</button>
+      </div>
+    </section>
+
     <!-- Monitor Grid -->
     <main class="main">
+      <section class="topology-strip">
+        <div class="topology-header">
+          <h2>Layout</h2>
+          <button id="btn-identify" class="btn btn-secondary" title="Identify Monitors">
+            Identify Monitors
+          </button>
+        </div>
+        <p id="topology-warning" class="topology-warning hidden"></p>
+        <div id="monitor-layout" class="monitor-layout"></div>
+      </section>
+
       <div id="monitors-container" class="monitors-grid">
         <div class="loading-state">
           <div class="spinner"></div>
@@ -38,46 +85,13 @@
       </div>
     </main>
 
-    <!-- Footer with Profile Controls -->
+    <!-- Bottom Action Bar -->
     <footer class="footer">
-      <div class="profile-section">
-        <div class="profile-controls">
-          <select id="profile-select" class="select">
-            <option value="">— Select Profile —</option>
-          </select>
-          <button id="btn-load-profile" class="btn btn-secondary" title="Load Profile">
-            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-              <polyline points="7 10 12 15 17 10" />
-              <line x1="12" y1="15" x2="12" y2="3" />
-            </svg>
-            Load Profile
-          </button>
-          <button id="btn-save-profile" class="btn btn-secondary" title="Save Profile">
-            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
-              <polyline points="17 21 17 13 7 13 7 21" />
-              <polyline points="7 3 7 8 15 8" />
-            </svg>
-            Save Profile
-          </button>
-          <button id="btn-delete-profile" class="btn btn-danger" title="Delete Profile">
-            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
-              <polyline points="3 6 5 6 21 6" />
-              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-            </svg>
-          </button>
-          <button id="btn-view-logs" class="btn btn-secondary" title="View Logs">View Logs</button>
-          <button id="btn-clear-logs" class="btn btn-secondary" title="Clear Logs">Clear Logs</button>
-        </div>
-      </div>
-      <button id="btn-refresh" class="btn btn-ghost" title="Refresh Monitors">
+      <button id="btn-apply" class="btn btn-primary btn-apply-bottom" title="Apply Configuration">
         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
-          <polyline points="23 4 23 10 17 10" />
-          <polyline points="1 20 1 14 7 14" />
-          <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+          <polyline points="20 6 9 17 4 12" />
         </svg>
-        Refresh
+        Apply Configuration
       </button>
     </footer>
 
