@@ -4,9 +4,9 @@
         {
             "label": "wallpaper: tauri dev",
             "type": "shell",
-            "command": "bunx",
+            "command": "bun",
             "args": [
-                "tauri",
+                "run",
                 "dev"
             ],
             "options": {
@@ -18,9 +18,9 @@
         {
             "label": "wallpaper: tauri build",
             "type": "shell",
-            "command": "bunx",
+            "command": "bun",
             "args": [
-                "tauri",
+                "run",
                 "build"
             ],
             "options": {
@@ -98,8 +98,7 @@
             "label": "wallpaper: full verify",
             "dependsOrder": "sequence",
             "dependsOn": [
-                "wallpaper: cargo test (lib)",
-                "wallpaper: cargo check",
+                "wallpaper: bun verify",
                 "wallpaper: tauri build"
             ],
             "problemMatcher": []

@@ -5,9 +5,9 @@
   "scripts": {
     "tauri": "tauri",
     "dev": "tauri dev",
-    "web:dev": "vite --host 127.0.0.1 --port 1420 --strictPort",
+    "web:dev": "vite --host localhost --port 3000 --strictPort",
     "web:build": "vite build",
-    "web:preview": "vite preview --host 127.0.0.1 --port 4173",
+    "web:preview": "vite preview --host localhost --port 4173",
     "build": "tauri build",
     "typecheck": "tsc --noEmit",
     "lint:frontend": "oxlint . --deny warnings",

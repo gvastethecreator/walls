@@ -5,7 +5,7 @@
   "identifier": "com.wallpaper.manager",
   "build": {
     "frontendDist": "../dist",
-    "devUrl": "http://127.0.0.1:1420",
+    "devUrl": "http://localhost:3000",
     "beforeDevCommand": "bun run web:dev",
     "beforeBuildCommand": "bun run web:build"
   },
@@ -22,7 +22,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; font-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost ws://127.0.0.1:1420 http://127.0.0.1:1420"
+      "csp": "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; font-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost ws://localhost:3000 http://localhost:3000"
     },
     "withGlobalTauri": false
   },
