@@ -1,78 +1,146 @@
+use crate::error::{AppError, AppResult};
 use serde::{Deserialize, Serialize};
-use std::fs;
-use std::path::PathBuf;
+use std::{collections::HashSet, fs, path::PathBuf};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// Asociación persistible entre un monitor y su fondo configurado.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub struct ProfileMonitor {
-    #[serde(rename = "monitorId")]
     pub monitor_id: String,
-    #[serde(rename = "imagePath")]
     pub image_path: String,
-    #[serde(rename = "fitMode")]
     pub fit_mode: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// Perfil completo de fondos que puede guardarse y restaurarse.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub struct Profile {
-    #[serde(rename = "profileName")]
     pub profile_name: String,
     pub monitors: Vec<ProfileMonitor>,
 }
 
-fn profiles_dir() -> Result<PathBuf, String> {
+fn profiles_dir() -> AppResult<PathBuf> {
     let base = dirs::data_dir()
-        .or_else(|| dirs::config_dir())
-        .ok_or_else(|| "Cannot determine app data directory".to_string())?;
+        .or_else(dirs::config_dir)
+        .ok_or_else(|| AppError::runtime("Cannot determine app data directory"))?;
 
-    let dir = base.join("WallpaperManager").join("profiles");
-    if !dir.exists() {
-        fs::create_dir_all(&dir)
-            .map_err(|e| format!("Failed to create profiles directory: {}", e))?;
-    }
-    Ok(dir)
+    let directory = base.join("WallpaperManager").join("profiles");
+    fs::create_dir_all(&directory)
+        .map_err(|source| AppError::io("Failed to create profiles directory", source))?;
+    Ok(directory)
 }
 
-fn profile_path(name: &str) -> Result<PathBuf, String> {
+fn profile_path(name: &str) -> AppResult<PathBuf> {
     let sanitized = sanitize_profile_name(name);
-    let dir = profiles_dir()?;
-    Ok(dir.join(format!("{}.json", sanitized)))
+    Ok(profiles_dir()?.join(format!("{sanitized}.json")))
 }
 
 fn sanitize_profile_name(name: &str) -> String {
     name.chars()
-        .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' || c == ' ' { c } else { '_' })
+        .map(|character| {
+            if character.is_alphanumeric() || matches!(character, '-' | '_' | ' ') {
+                character
+            } else {
+                '_'
+            }
+        })
         .collect()
 }
 
-pub fn save_profile(profile: &Profile) -> Result<(), String> {
-    let path = profile_path(&profile.profile_name)?;
-    let json = serde_json::to_string_pretty(profile)
-        .map_err(|e| format!("Serialization failed: {}", e))?;
-    fs::write(&path, json).map_err(|e| format!("Write failed: {}", e))?;
+fn is_supported_fit_mode(value: &str) -> bool {
+    matches!(value, "Center" | "Tile" | "Stretch" | "Fit" | "Fill" | "Span")
+}
+
+fn validate_profile_name(name: &str) -> AppResult<()> {
+    let trimmed = name.trim();
+    if trimmed.is_empty() {
+        return Err(AppError::validation("Profile name cannot be empty"));
+    }
+    if trimmed.len() > 80 {
+        return Err(AppError::validation(
+            "Profile name is too long (max 80 chars)",
+        ));
+    }
+
+    let sanitized = sanitize_profile_name(trimmed);
+    if sanitized.trim().is_empty() {
+        return Err(AppError::validation(
+            "Profile name contains no valid characters",
+        ));
+    }
+
     Ok(())
 }
 
-pub fn load_profile(name: &str) -> Result<Profile, String> {
+fn validate_profile_monitors(monitors: &[ProfileMonitor]) -> AppResult<()> {
+    let mut seen = HashSet::new();
+    for monitor in monitors {
+        if monitor.monitor_id.trim().is_empty() {
+            return Err(AppError::validation(
+                "Profile contains a monitor with empty ID",
+            ));
+        }
+        if !seen.insert(monitor.monitor_id.clone()) {
+            return Err(AppError::validation(format!(
+                "Profile contains duplicate monitor ID: {}",
+                monitor.monitor_id
+            )));
+        }
+        if !is_supported_fit_mode(&monitor.fit_mode) {
+            return Err(AppError::validation(format!(
+                "Unsupported fit mode in profile: {}",
+                monitor.fit_mode
+            )));
+        }
+    }
+
+    Ok(())
+}
+
+fn validate_profile(profile: &Profile) -> AppResult<()> {
+    validate_profile_name(&profile.profile_name)?;
+    validate_profile_monitors(&profile.monitors)
+}
+
+/// Guarda un perfil en disco validando previamente su estructura.
+pub fn save_profile(profile: &Profile) -> AppResult<()> {
+    validate_profile(profile)?;
+
+    let path = profile_path(&profile.profile_name)?;
+    let json = serde_json::to_string_pretty(profile)
+        .map_err(|source| AppError::json("Failed to serialize profile", source))?;
+    fs::write(&path, json).map_err(|source| AppError::io("Failed to write profile", source))?;
+    Ok(())
+}
+
+/// Carga un perfil desde disco y vuelve a validarlo antes de devolverlo.
+pub fn load_profile(name: &str) -> AppResult<Profile> {
+    validate_profile_name(name)?;
+
     let path = profile_path(name)?;
     if !path.exists() {
-        return Err(format!("Profile '{}' not found", name));
+        return Err(AppError::not_found(format!("Profile '{name}' not found")));
     }
-    let content = fs::read_to_string(&path).map_err(|e| format!("Read failed: {}", e))?;
-    let profile: Profile =
-        serde_json::from_str(&content).map_err(|e| format!("Parse failed: {}", e))?;
+
+    let content = fs::read_to_string(&path)
+        .map_err(|source| AppError::io("Failed to read profile", source))?;
+    let profile = serde_json::from_str::<Profile>(&content)
+        .map_err(|source| AppError::json("Failed to parse profile", source))?;
+    validate_profile(&profile)?;
     Ok(profile)
 }
 
-pub fn list_profiles() -> Result<Vec<String>, String> {
-    let dir = profiles_dir()?;
+/// Lista los perfiles disponibles ordenados alfabéticamente.
+pub fn list_profiles() -> AppResult<Vec<String>> {
+    let directory = profiles_dir()?;
     let mut names = Vec::new();
 
-    let entries = fs::read_dir(&dir).map_err(|e| format!("Read dir failed: {}", e))?;
-
-    for entry in entries {
-        let entry = entry.map_err(|e| format!("{}", e))?;
+    for entry in fs::read_dir(&directory)
+        .map_err(|source| AppError::io("Failed to read profiles directory", source))?
+    {
+        let entry = entry.map_err(|source| AppError::io("Failed to enumerate profiles", source))?;
         let path = entry.path();
-        if path.extension().map(|e| e == "json").unwrap_or(false) {
+        if path.extension().is_some_and(|extension| extension == "json") {
             if let Some(stem) = path.file_stem() {
                 names.push(stem.to_string_lossy().to_string());
             }
@@ -83,13 +151,16 @@ pub fn list_profiles() -> Result<Vec<String>, String> {
     Ok(names)
 }
 
-pub fn delete_profile(name: &str) -> Result<(), String> {
+/// Elimina un perfil existente.
+pub fn delete_profile(name: &str) -> AppResult<()> {
+    validate_profile_name(name)?;
+
     let path = profile_path(name)?;
     if !path.exists() {
-        return Err(format!("Profile '{}' not found", name));
+        return Err(AppError::not_found(format!("Profile '{name}' not found")));
     }
-    fs::remove_file(&path).map_err(|e| format!("Delete failed: {}", e))?;
-    Ok(())
+
+    fs::remove_file(&path).map_err(|source| AppError::io("Failed to delete profile", source))
 }
 
 #[cfg(test)]
@@ -101,6 +172,37 @@ mod tests {
     fn sanitize_profile_name_replaces_invalid_characters() {
         assert_eq!(sanitize_profile_name("Work/Profile:2026"), "Work_Profile_2026");
         assert_eq!(sanitize_profile_name("My Profile-01_ok"), "My Profile-01_ok");
+    }
+
+    #[test]
+    fn validate_profile_name_rejects_invalid_inputs() {
+        assert!(validate_profile_name("  ").is_err());
+        assert!(validate_profile_name(&"x".repeat(81)).is_err());
+        assert!(validate_profile_name("valid_name").is_ok());
+    }
+
+    #[test]
+    fn validate_profile_monitors_rejects_duplicates_and_invalid_fit() {
+        let duplicated = vec![
+            ProfileMonitor {
+                monitor_id: "MON1".to_string(),
+                image_path: "a.png".to_string(),
+                fit_mode: "Fill".to_string(),
+            },
+            ProfileMonitor {
+                monitor_id: "MON1".to_string(),
+                image_path: "b.png".to_string(),
+                fit_mode: "Fill".to_string(),
+            },
+        ];
+        assert!(validate_profile_monitors(&duplicated).is_err());
+
+        let invalid_fit = vec![ProfileMonitor {
+            monitor_id: "MON2".to_string(),
+            image_path: "a.png".to_string(),
+            fit_mode: "Whatever".to_string(),
+        }];
+        assert!(validate_profile_monitors(&invalid_fit).is_err());
     }
 
     #[test]

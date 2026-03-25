@@ -1,9 +1,12 @@
+use crate::{
+    error::{AppError, AppResult},
+    logger,
+};
 use serde::{Deserialize, Serialize};
 use std::ffi::OsString;
 use std::fs;
 use std::os::windows::ffi::OsStringExt;
-use std::path::PathBuf;
-use crate::logger;
+use std::path::{Path, PathBuf};
 use windows::core::{HSTRING, PCWSTR};
 use windows::Win32::Foundation::LPARAM;
 use windows::Win32::Foundation::RECT;
@@ -21,8 +24,11 @@ use windows::Win32::UI::Shell::{
 
 const NONE_MARKER: &str = "__NONE__";
 const SOLID_PREFIX: &str = "__SOLID__:";
+const GDI_FALLBACK_PREFIX: &str = "GDI_MONITOR_";
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// Estado detectado para un monitor individual.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub struct MonitorInfo {
     pub id: String,
     pub display_index: u32,
@@ -35,34 +41,73 @@ pub struct MonitorInfo {
     pub current_fit: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+fn is_supported_fit_mode(value: &str) -> bool {
+    matches!(value, "Center" | "Tile" | "Stretch" | "Fit" | "Fill" | "Span")
+}
+
+fn validate_monitor_id(monitor_id: &str) -> AppResult<()> {
+    if monitor_id.trim().is_empty() {
+        return Err(AppError::validation("Monitor ID cannot be empty"));
+    }
+    if monitor_id.starts_with(GDI_FALLBACK_PREFIX) {
+        return Err(AppError::validation(
+            "Diagnostic monitor IDs cannot be used for wallpaper operations",
+        ));
+    }
+    Ok(())
+}
+
+fn validate_fit_mode(fit_mode: &str) -> AppResult<()> {
+    if !is_supported_fit_mode(fit_mode) {
+        return Err(AppError::validation(format!(
+            "Unsupported fit mode: {fit_mode}"
+        )));
+    }
+    Ok(())
+}
+
+fn validate_resolved_image_path(path: &Path) -> AppResult<()> {
+    let metadata = fs::metadata(path)
+        .map_err(|source| AppError::io("Failed to read wallpaper metadata", source))?;
+    if !metadata.is_file() {
+        return Err(AppError::validation(format!(
+            "Wallpaper path is not a file: {}",
+            path.display()
+        )));
+    }
+    Ok(())
+}
+
+/// Configuración de fondo a aplicar sobre un monitor.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub struct WallpaperConfig {
     pub monitor_id: String,
     pub image_path: String,
     pub fit_mode: String,
 }
 
-fn fit_str_to_position(fit: &str) -> DESKTOP_WALLPAPER_POSITION {
-    match fit.to_lowercase().as_str() {
-        "center" => DWPOS_CENTER,
-        "tile" => DWPOS_TILE,
-        "stretch" => DWPOS_STRETCH,
-        "fit" => DWPOS_FIT,
-        "fill" => DWPOS_FILL,
-        "span" => DWPOS_SPAN,
-        _ => DWPOS_FILL,
+fn fit_str_to_position(fit: &str) -> AppResult<DESKTOP_WALLPAPER_POSITION> {
+    match fit.to_ascii_lowercase().as_str() {
+        "center" => Ok(DWPOS_CENTER),
+        "tile" => Ok(DWPOS_TILE),
+        "stretch" => Ok(DWPOS_STRETCH),
+        "fit" => Ok(DWPOS_FIT),
+        "fill" => Ok(DWPOS_FILL),
+        "span" => Ok(DWPOS_SPAN),
+        _ => Err(AppError::validation(format!("Unsupported fit mode: {fit}"))),
     }
 }
 
-fn position_to_fit_str(pos: DESKTOP_WALLPAPER_POSITION) -> String {
+fn position_to_fit_str(pos: DESKTOP_WALLPAPER_POSITION) -> &'static str {
     match pos {
-        DWPOS_CENTER => "Center".to_string(),
-        DWPOS_TILE => "Tile".to_string(),
-        DWPOS_STRETCH => "Stretch".to_string(),
-        DWPOS_FIT => "Fit".to_string(),
-        DWPOS_FILL => "Fill".to_string(),
-        DWPOS_SPAN => "Span".to_string(),
-        _ => "Fill".to_string(),
+        DWPOS_CENTER => "Center",
+        DWPOS_TILE => "Tile",
+        DWPOS_STRETCH => "Stretch",
+        DWPOS_FIT => "Fit",
+        DWPOS_FILL => "Fill",
+        DWPOS_SPAN => "Span",
+        _ => "Fill",
     }
 }
 
@@ -77,47 +122,42 @@ fn parse_hex_color(color: &str) -> Option<(u8, u8, u8)> {
     Some((r, g, b))
 }
 
-fn solid_cache_dir() -> Result<PathBuf, String> {
+fn solid_cache_dir() -> AppResult<PathBuf> {
     let base = dirs::data_dir()
-        .or_else(|| dirs::config_dir())
-        .ok_or_else(|| "Cannot determine app data directory".to_string())?;
-    let dir = base.join("WallpaperManager").join("cache");
-    if !dir.exists() {
-        fs::create_dir_all(&dir).map_err(|e| format!("Failed to create cache dir: {}", e))?;
-    }
-    Ok(dir)
+        .or_else(dirs::config_dir)
+        .ok_or_else(|| AppError::runtime("Cannot determine app data directory"))?;
+    let directory = base.join("WallpaperManager").join("cache");
+    fs::create_dir_all(&directory)
+        .map_err(|source| AppError::io("Failed to create cache dir", source))?;
+    Ok(directory)
 }
 
-fn write_solid_bmp(path: &PathBuf, r: u8, g: u8, b: u8) -> Result<(), String> {
-    // 64x64, 24-bit BMP with row padding to 4 bytes.
+fn write_solid_bmp(path: &Path, r: u8, g: u8, b: u8) -> AppResult<()> {
     let width: u32 = 64;
     let height: u32 = 64;
-    let row_stride = ((24 * width + 31) / 32) * 4;
+    let row_stride = (24 * width).div_ceil(32) * 4;
     let pixel_array_size = row_stride * height;
     let file_size: u32 = 14 + 40 + pixel_array_size;
     let mut data = Vec::with_capacity(file_size as usize);
 
-    // BITMAPFILEHEADER (14 bytes)
     data.extend_from_slice(b"BM");
     data.extend_from_slice(&file_size.to_le_bytes());
     data.extend_from_slice(&0u16.to_le_bytes());
     data.extend_from_slice(&0u16.to_le_bytes());
     data.extend_from_slice(&(14u32 + 40u32).to_le_bytes());
 
-    // BITMAPINFOHEADER (40 bytes)
     data.extend_from_slice(&40u32.to_le_bytes());
-    data.extend_from_slice(&(width as i32).to_le_bytes()); // width
-    data.extend_from_slice(&(height as i32).to_le_bytes()); // height
-    data.extend_from_slice(&1u16.to_le_bytes()); // planes
-    data.extend_from_slice(&24u16.to_le_bytes()); // bpp
-    data.extend_from_slice(&0u32.to_le_bytes()); // BI_RGB
-    data.extend_from_slice(&pixel_array_size.to_le_bytes()); // image size
+    data.extend_from_slice(&(width as i32).to_le_bytes());
+    data.extend_from_slice(&(height as i32).to_le_bytes());
+    data.extend_from_slice(&1u16.to_le_bytes());
+    data.extend_from_slice(&24u16.to_le_bytes());
+    data.extend_from_slice(&0u32.to_le_bytes());
+    data.extend_from_slice(&pixel_array_size.to_le_bytes());
     data.extend_from_slice(&0i32.to_le_bytes());
     data.extend_from_slice(&0i32.to_le_bytes());
     data.extend_from_slice(&0u32.to_le_bytes());
     data.extend_from_slice(&0u32.to_le_bytes());
 
-    // Pixel data (bottom-up rows)
     let padding = (row_stride - (width * 3)) as usize;
     for _ in 0..height {
         for _ in 0..width {
@@ -125,46 +165,44 @@ fn write_solid_bmp(path: &PathBuf, r: u8, g: u8, b: u8) -> Result<(), String> {
             data.push(g);
             data.push(r);
         }
-        for _ in 0..padding {
-            data.push(0);
-        }
+        data.extend(std::iter::repeat_n(0, padding));
     }
 
-    fs::write(path, data).map_err(|e| format!("Failed to write solid bmp: {}", e))
+    fs::write(path, data).map_err(|source| AppError::io("Failed to write solid bmp", source))
 }
 
-fn resolve_image_path_marker(image_path: &str) -> Result<Option<String>, String> {
+fn resolve_image_path_marker(image_path: &str) -> AppResult<Option<PathBuf>> {
     let trimmed = image_path.trim();
     if trimmed.is_empty() || trimmed == NONE_MARKER {
-        // "No background" fallback for Windows: set a black bitmap explicitly,
-        // since empty wallpaper can keep previous image depending on shell state.
         let path = solid_cache_dir()?.join("solid_none_black.bmp");
         if !path.exists() {
             write_solid_bmp(&path, 0, 0, 0)?;
         }
-        return Ok(Some(path.to_string_lossy().to_string()));
+        return Ok(Some(path));
     }
 
     if let Some(hex) = trimmed.strip_prefix(SOLID_PREFIX) {
-        let (r, g, b) = parse_hex_color(hex).ok_or_else(|| format!("Invalid solid color marker: {}", trimmed))?;
+        let (r, g, b) = parse_hex_color(hex)
+            .ok_or_else(|| AppError::validation(format!("Invalid solid color marker: {trimmed}")))?;
         let path = solid_cache_dir()?.join(format!("solid_{}_{}_{}.bmp", r, g, b));
         if !path.exists() {
             write_solid_bmp(&path, r, g, b)?;
         }
-        return Ok(Some(path.to_string_lossy().to_string()));
+        return Ok(Some(path));
     }
 
-    Ok(Some(trimmed.to_string()))
+    Ok(Some(PathBuf::from(trimmed)))
 }
 
 struct ComGuard;
 
 impl ComGuard {
     fn new() -> windows::core::Result<Self> {
-        // Tauri may execute commands on threads with a pre-configured COM model.
-        // If apartment init fails due to changed mode, retry as MTA.
+        // SAFETY: Initializar COM es obligatorio antes de interactuar con IDesktopWallpaper.
+        // Si el hilo ya estaba inicializado con otro modelo, reintentamos con MTA.
         let hr_sta = unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED) };
         if hr_sta.is_err() {
+            // SAFETY: Segundo intento con MTA en el mismo hilo por compatibilidad con hilos del runtime.
             let hr_mta = unsafe { CoInitializeEx(None, COINIT_MULTITHREADED) };
             if hr_mta.is_err() {
                 return Err(hr_mta.into());
@@ -176,11 +214,13 @@ impl ComGuard {
 
 impl Drop for ComGuard {
     fn drop(&mut self) {
+        // SAFETY: Sólo puede existir ComGuard si CoInitializeEx devolvió éxito previamente.
         unsafe { CoUninitialize() };
     }
 }
 
 fn create_desktop_wallpaper() -> windows::core::Result<IDesktopWallpaper> {
+    // SAFETY: DesktopWallpaper es un COM object oficial y ComGuard garantiza inicialización previa.
     unsafe { CoCreateInstance(&DesktopWallpaper, None, CLSCTX_ALL) }
 }
 
@@ -195,6 +235,7 @@ unsafe extern "system" fn enum_monitor_proc(
     _lprect: *mut windows::Win32::Foundation::RECT,
     lparam: LPARAM,
 ) -> windows::Win32::Foundation::BOOL {
+    // SAFETY: lparam contiene un puntero válido a MonitorCollector suministrado por get_monitor_display_names.
     let collector = &mut *(lparam.0 as *mut MonitorCollector);
     collector.monitors.push(hmonitor);
     windows::Win32::Foundation::TRUE
@@ -204,6 +245,7 @@ fn get_monitor_display_names() -> Vec<(String, i32, i32, u32, u32)> {
     let mut collector = MonitorCollector {
         monitors: Vec::new(),
     };
+    // SAFETY: Pasamos un callback estático y un puntero válido a collector que vive toda la llamada.
     unsafe {
         let _ = EnumDisplayMonitors(
             None,
@@ -215,8 +257,10 @@ fn get_monitor_display_names() -> Vec<(String, i32, i32, u32, u32)> {
 
     let mut result = Vec::new();
     for hmon in &collector.monitors {
+        // SAFETY: MONITORINFOEXW es un POD Win32 y cero-inicializarlo es el patrón esperado antes de GetMonitorInfoW.
         let mut info: MONITORINFOEXW = unsafe { std::mem::zeroed() };
         info.monitorInfo.cbSize = std::mem::size_of::<MONITORINFOEXW>() as u32;
+        // SAFETY: hmon proviene de EnumDisplayMonitors y info apunta a memoria válida con cbSize inicializado.
         unsafe {
             let _ = GetMonitorInfoW(*hmon, &mut info.monitorInfo as *mut _ as *mut _);
         }
@@ -243,33 +287,42 @@ fn get_monitor_display_names() -> Vec<(String, i32, i32, u32, u32)> {
     result
 }
 
-pub fn get_monitors() -> Result<Vec<MonitorInfo>, String> {
-    logger::log_event("wallpaper", "get_monitors start");
-    let _com = ComGuard::new().map_err(|e| format!("COM init failed: {}", e))?;
-    let dw = create_desktop_wallpaper().map_err(|e| format!("IDesktopWallpaper failed: {}", e))?;
+/// Devuelve la lista de monitores detectados con su configuración actual.
+pub fn get_monitors() -> AppResult<Vec<MonitorInfo>> {
+    logger::debug("wallpaper", "get_monitors start");
+    let _com = ComGuard::new().map_err(|error| AppError::wallpaper(format!("COM init failed: {error}")))?;
+    let dw = create_desktop_wallpaper()
+        .map_err(|error| AppError::wallpaper(format!("IDesktopWallpaper failed: {error}")))?;
 
-    let count = unsafe { dw.GetMonitorDevicePathCount() }.map_err(|e| format!("{}", e))?;
-    logger::log_event("wallpaper", &format!("GetMonitorDevicePathCount={}", count));
+    // SAFETY: dw es una interfaz COM válida inicializada por create_desktop_wallpaper.
+    let count = unsafe { dw.GetMonitorDevicePathCount() }
+        .map_err(|error| AppError::wallpaper(error.to_string()))?;
+    logger::debug("wallpaper", &format!("GetMonitorDevicePathCount={count}"));
     let display_names = get_monitor_display_names();
-    logger::log_event("wallpaper", &format!("GDI monitors found={}", display_names.len()));
+    logger::debug(
+        "wallpaper",
+        &format!("GDI monitors found={}", display_names.len()),
+    );
 
-    // Get current position (global — IDesktopWallpaper uses one position for all)
+    // SAFETY: dw es una interfaz COM válida; si falla usamos Fill como fallback observable.
     let current_pos = unsafe { dw.GetPosition() }.unwrap_or(DWPOS_FILL);
 
     let mut monitors = Vec::new();
 
-    // Global wallpaper fallback (used when per-monitor wallpaper is unavailable)
+    // SAFETY: pedir el wallpaper global con PCWSTR nulo es la API soportada por IDesktopWallpaper.
     let global_wp = unsafe { dw.GetWallpaper(PCWSTR::null()) }
         .map(|p| unsafe { p.to_string() }.unwrap_or_default())
         .unwrap_or_default();
 
     for i in 0..count {
-        let raw_id = unsafe { dw.GetMonitorDevicePathAt(i) }.map_err(|e| format!("{}", e))?;
+        // SAFETY: i está en el rango 0..count proporcionado por GetMonitorDevicePathCount.
+        let raw_id = unsafe { dw.GetMonitorDevicePathAt(i) }
+            .map_err(|error| AppError::wallpaper(error.to_string()))?;
         let id_str = unsafe { raw_id.to_string() }.unwrap_or_default();
-        logger::log_event("wallpaper", &format!("Monitor index={} id='{}'", i, id_str));
+        logger::debug("wallpaper", &format!("Monitor index={i} id='{id_str}'"));
 
-        // Get current wallpaper for this monitor
         let monitor_hstr = HSTRING::from(&id_str);
+        // SAFETY: monitor_hstr apunta a una cadena UTF-16 válida y el monitor ID proviene del propio sistema.
         let mut current_wp = unsafe { dw.GetWallpaper(PCWSTR(monitor_hstr.as_ptr())) }
             .map(|p| unsafe { p.to_string() }.unwrap_or_default())
             .unwrap_or_default();
@@ -277,13 +330,12 @@ pub fn get_monitors() -> Result<Vec<MonitorInfo>, String> {
         if current_wp.is_empty() {
             current_wp = global_wp.clone();
         }
-        logger::log_event(
+        logger::debug(
             "wallpaper",
-            &format!("Monitor index={} wallpaper='{}'", i, current_wp),
+            &format!("Monitor index={i} wallpaper='{current_wp}'"),
         );
 
-        // Always resolve monitor geometry from IDesktopWallpaper monitor ID
-        // to avoid index/order mismatches with GDI enumeration.
+        // SAFETY: el monitor ID proviene del propio IDesktopWallpaper.
         let monitor_rect = unsafe { dw.GetMonitorRECT(PCWSTR(monitor_hstr.as_ptr())) }
             .unwrap_or(RECT {
                 left: 0,
@@ -306,17 +358,15 @@ pub fn get_monitors() -> Result<Vec<MonitorInfo>, String> {
             x,
             y,
             current_wallpaper: current_wp,
-            current_fit: position_to_fit_str(current_pos),
+            current_fit: position_to_fit_str(current_pos).to_string(),
         });
     }
 
-    // Fallback: if IDesktopWallpaper returns 0 monitors, use GDI enumeration
-    // only for visual display. These IDs are not valid for per-monitor apply.
     if monitors.is_empty() && !display_names.is_empty() {
-        logger::log_event("wallpaper", "Using GDI fallback monitor list");
+        logger::warn("wallpaper", "Using GDI fallback monitor list");
         for (i, (_device, x, y, w, h)) in display_names.iter().enumerate() {
             monitors.push(MonitorInfo {
-                id: format!("GDI_MONITOR_{}", i + 1),
+                id: format!("{GDI_FALLBACK_PREFIX}{}", i + 1),
                 display_index: (i + 1) as u32,
                 name: format!("Monitor {} ({}x{})", i + 1, w, h),
                 width: *w,
@@ -324,86 +374,144 @@ pub fn get_monitors() -> Result<Vec<MonitorInfo>, String> {
                 x: *x,
                 y: *y,
                 current_wallpaper: String::new(),
-                current_fit: position_to_fit_str(current_pos),
+                current_fit: position_to_fit_str(current_pos).to_string(),
             });
         }
     }
 
-    logger::log_event("wallpaper", &format!("get_monitors done: {} monitors", monitors.len()));
+    logger::debug(
+        "wallpaper",
+        &format!("get_monitors done: {} monitor(s)", monitors.len()),
+    );
 
     Ok(monitors)
 }
 
-pub fn set_wallpaper(monitor_id: &str, image_path: &str, fit_mode: &str) -> Result<(), String> {
-    logger::log_event(
+/// Aplica un fondo individual a un monitor concreto.
+pub fn set_wallpaper(monitor_id: &str, image_path: &str, fit_mode: &str) -> AppResult<()> {
+    logger::info(
         "wallpaper",
-        &format!("set_wallpaper monitor_id='{}' image_path='{}' fit='{}'", monitor_id, image_path, fit_mode),
+        &format!(
+            "set_wallpaper monitor_id='{monitor_id}' image_path='{image_path}' fit='{fit_mode}'"
+        ),
     );
-    let _com = ComGuard::new().map_err(|e| format!("COM init failed: {}", e))?;
-    let dw = create_desktop_wallpaper().map_err(|e| format!("IDesktopWallpaper failed: {}", e))?;
+
+    validate_monitor_id(monitor_id)?;
+    validate_fit_mode(fit_mode)?;
+
+    let _com = ComGuard::new().map_err(|error| AppError::wallpaper(format!("COM init failed: {error}")))?;
+    let dw = create_desktop_wallpaper()
+        .map_err(|error| AppError::wallpaper(format!("IDesktopWallpaper failed: {error}")))?;
 
     let monitor_hstr = HSTRING::from(monitor_id);
-    let position = fit_str_to_position(fit_mode);
+    let position = fit_str_to_position(fit_mode)?;
     let resolved = resolve_image_path_marker(image_path)?;
 
+    if let Some(path) = resolved.as_deref() {
+        validate_resolved_image_path(path)?;
+    }
+
+    // SAFETY: el monitor ID y la ruta resuelta provienen de datos validados antes de invocar la API COM.
     unsafe {
         if let Some(path) = resolved {
-            let image_hstr = HSTRING::from(path);
+            let image_hstr = HSTRING::from(path.to_string_lossy().to_string());
             dw.SetWallpaper(PCWSTR(monitor_hstr.as_ptr()), &image_hstr)
-                .map_err(|e| format!("SetWallpaper failed: {}", e))?;
+                .map_err(|error| AppError::wallpaper(format!("SetWallpaper failed: {error}")))?;
         } else {
             let empty_hstr = HSTRING::from("");
             dw.SetWallpaper(PCWSTR(monitor_hstr.as_ptr()), &empty_hstr)
-                .map_err(|e| format!("Clear wallpaper failed: {}", e))?;
+                .map_err(|error| AppError::wallpaper(format!("Clear wallpaper failed: {error}")))?;
         }
         dw.SetPosition(position)
-            .map_err(|e| format!("SetPosition failed: {}", e))?;
+            .map_err(|error| AppError::wallpaper(format!("SetPosition failed: {error}")))?;
     }
 
-    logger::log_event("wallpaper", "set_wallpaper success");
+    logger::info("wallpaper", "set_wallpaper success");
 
     Ok(())
 }
 
-pub fn apply_configuration(configs: &[WallpaperConfig]) -> Result<(), String> {
-    logger::log_event("wallpaper", &format!("apply_configuration count={}", configs.len()));
-    let _com = ComGuard::new().map_err(|e| format!("COM init failed: {}", e))?;
-    let dw = create_desktop_wallpaper().map_err(|e| format!("IDesktopWallpaper failed: {}", e))?;
+/// Aplica una configuración completa multi-monitor.
+pub fn apply_configuration(configs: &[WallpaperConfig]) -> AppResult<()> {
+    logger::info(
+        "wallpaper",
+        &format!("apply_configuration count={}", configs.len()),
+    );
+
+    if configs.is_empty() {
+        return Err(AppError::validation("Configuration list cannot be empty"));
+    }
+
+    let mut seen = std::collections::HashSet::new();
+    for config in configs {
+        validate_monitor_id(&config.monitor_id)?;
+        validate_fit_mode(&config.fit_mode)?;
+        if !seen.insert(config.monitor_id.clone()) {
+            return Err(AppError::validation(format!(
+                "Duplicate monitor in configuration: {}",
+                config.monitor_id
+            )));
+        }
+    }
+
+    let _com = ComGuard::new().map_err(|error| AppError::wallpaper(format!("COM init failed: {error}")))?;
+    let dw = create_desktop_wallpaper()
+        .map_err(|error| AppError::wallpaper(format!("IDesktopWallpaper failed: {error}")))?;
 
     for config in configs {
-        logger::log_event(
+        logger::debug(
             "wallpaper",
-            &format!("apply monitor='{}' image='{}' fit='{}'", config.monitor_id, config.image_path, config.fit_mode),
+            &format!(
+                "apply monitor='{}' image='{}' fit='{}'",
+                config.monitor_id, config.image_path, config.fit_mode
+            ),
         );
 
         let monitor_hstr = HSTRING::from(&config.monitor_id);
         let resolved = resolve_image_path_marker(&config.image_path)?;
 
+        if let Some(path) = resolved.as_deref() {
+            validate_resolved_image_path(path)?;
+        }
+
+        // SAFETY: todos los identificadores y rutas han sido validados previamente.
         unsafe {
             if let Some(path) = resolved {
-                let image_hstr = HSTRING::from(path);
+                let image_hstr = HSTRING::from(path.to_string_lossy().to_string());
                 dw.SetWallpaper(PCWSTR(monitor_hstr.as_ptr()), &image_hstr)
-                    .map_err(|e| format!("SetWallpaper failed for {}: {}", config.monitor_id, e))?;
+                    .map_err(|error| {
+                        AppError::wallpaper(format!(
+                            "SetWallpaper failed for {}: {}",
+                            config.monitor_id, error
+                        ))
+                    })?;
             } else {
                 let empty_hstr = HSTRING::from("");
                 dw.SetWallpaper(PCWSTR(monitor_hstr.as_ptr()), &empty_hstr)
-                    .map_err(|e| format!("Clear wallpaper failed for {}: {}", config.monitor_id, e))?;
+                    .map_err(|error| {
+                        AppError::wallpaper(format!(
+                            "Clear wallpaper failed for {}: {}",
+                            config.monitor_id, error
+                        ))
+                    })?;
             }
         }
     }
 
-    // NOTE: IDesktopWallpaper position is global (not per-monitor).
-    // Use first config deterministically after all wallpapers are assigned.
     if let Some(first) = configs.first() {
-        let position = fit_str_to_position(&first.fit_mode);
+        let position = fit_str_to_position(&first.fit_mode)?;
+        // SAFETY: el valor de position procede de una validación previa del fit mode.
         unsafe {
             dw.SetPosition(position)
-                .map_err(|e| format!("SetPosition failed: {}", e))?;
+                .map_err(|error| AppError::wallpaper(format!("SetPosition failed: {error}")))?;
         }
-        logger::log_event("wallpaper", &format!("SetPosition from first fit='{}'", first.fit_mode));
+        logger::debug(
+            "wallpaper",
+            &format!("SetPosition from first fit='{}'", first.fit_mode),
+        );
     }
 
-    logger::log_event("wallpaper", "apply_configuration success");
+    logger::info("wallpaper", "apply_configuration success");
 
     Ok(())
 }
@@ -431,18 +539,18 @@ mod tests {
         let regular = r"C:\\wallpapers\\sample.png";
         assert_eq!(
             resolve_image_path_marker(regular).unwrap(),
-            Some(regular.to_string())
+            Some(PathBuf::from(regular))
         );
     }
 
     #[test]
     fn fit_mapping_is_stable() {
-        assert_eq!(position_to_fit_str(fit_str_to_position("Center")), "Center");
-        assert_eq!(position_to_fit_str(fit_str_to_position("Tile")), "Tile");
-        assert_eq!(position_to_fit_str(fit_str_to_position("Stretch")), "Stretch");
-        assert_eq!(position_to_fit_str(fit_str_to_position("Fit")), "Fit");
-        assert_eq!(position_to_fit_str(fit_str_to_position("Fill")), "Fill");
-        assert_eq!(position_to_fit_str(fit_str_to_position("Span")), "Span");
+        assert_eq!(position_to_fit_str(fit_str_to_position("Center").unwrap()), "Center");
+        assert_eq!(position_to_fit_str(fit_str_to_position("Tile").unwrap()), "Tile");
+        assert_eq!(position_to_fit_str(fit_str_to_position("Stretch").unwrap()), "Stretch");
+        assert_eq!(position_to_fit_str(fit_str_to_position("Fit").unwrap()), "Fit");
+        assert_eq!(position_to_fit_str(fit_str_to_position("Fill").unwrap()), "Fill");
+        assert_eq!(position_to_fit_str(fit_str_to_position("Span").unwrap()), "Span");
     }
 
     #[test]

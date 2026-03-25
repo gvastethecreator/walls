@@ -20,6 +20,19 @@ Aplicación de escritorio para Windows 10/11 construida con **Tauri + Rust + HTM
 - `.vscode/tasks.json`: tareas de desarrollo y verificación
 - `docs/`: documentación técnica detallada
 
+### Frontend modular (actual)
+
+El frontend ahora se inicializa desde `src/js/main.js` (referenciado en `src/index.html` con `type="module"`).
+
+- `src/js/core.js`: estado global compartido, referencias DOM, utilidades comunes, wrappers Tauri (`invoke`, `openDialog`), toast/log.
+- `src/js/monitors.js`: detección/render de monitores, previews, apply global/por monitor, delegación de eventos de tarjetas.
+- `src/js/editor.js`: editor canvas (drag, zoom, rotate, filtros, tinte) y flujo save/apply.
+- `src/js/profiles.js`: guardar/cargar/eliminar perfiles y modal de guardado.
+- `src/js/logs.js`: visor de logs y limpieza de logs.
+- `src/js/main.js`: composición de módulos, binding de eventos globales e inicialización.
+
+`src/app.js` se conserva solo como **shim de compatibilidad** (deprecado) para referencias antiguas; el flujo activo ya no depende de ese archivo.
+
 ## Requisitos
 
 - Windows 10/11

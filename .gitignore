@@ -1,5 +1,8 @@
 # Node/Bun
 node_modules/
+.vite/
+dist/
+coverage/
 
 # Bun lockfile should be versioned (do not ignore bun.lock)
 

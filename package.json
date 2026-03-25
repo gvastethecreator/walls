@@ -1,25 +1,54 @@
 {
   "name": "wallpaper",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "Wallpaper Manager para Windows construido con Tauri, React, TypeScript y Bun.",
   "scripts": {
     "tauri": "tauri",
     "dev": "tauri dev",
+    "web:dev": "vite --host 127.0.0.1 --port 1420 --strictPort",
+    "web:build": "vite build",
+    "web:preview": "vite preview --host 127.0.0.1 --port 4173",
     "build": "tauri build",
+    "typecheck": "tsc --noEmit",
+    "lint:frontend": "oxlint . --deny warnings",
+    "lint:backend": "cd src-tauri && cargo clippy -- -D warnings",
+    "format:backend": "cd src-tauri && cargo fmt --all",
+    "format:backend:check": "cd src-tauri && cargo fmt --all --check",
     "check:rust": "cd src-tauri && cargo check",
     "test:rust": "cd src-tauri && cargo test --lib",
-    "verify": "bun run test:rust && bun run check:rust"
+    "test:frontend": "vitest run --coverage",
+    "verify": "bun run typecheck && bun run lint:frontend && bun run test:frontend && bun run test:rust && bun run lint:backend && bun run check:rust && bun run web:build"
   },
   "keywords": [],
   "author": "",
-  "license": "ISC",
+  "license": "MIT",
   "packageManager": "bun@1.3.9",
-  "type": "commonjs",
+  "type": "module",
   "devDependencies": {
-    "@tauri-apps/cli": "^2.10.1"
+    "@tailwindcss/vite": "^4.1.13",
+    "@tauri-apps/cli": "^2.10.1",
+    "@testing-library/jest-dom": "^6.8.0",
+    "@testing-library/react": "^16.3.0",
+    "@testing-library/user-event": "^14.6.1",
+    "@types/node": "^24.5.2",
+    "@types/react": "^19.1.8",
+    "@types/react-dom": "^19.1.6",
+    "@vitejs/plugin-react": "^5.0.2",
+    "@vitest/coverage-istanbul": "^4.0.7",
+    "jsdom": "^26.1.0",
+    "oxlint": "^1.13.0",
+    "tailwindcss": "^4.1.13",
+    "typescript": "^5.9.2",
+    "vite": "^8.0.0",
+    "vitest": "^4.0.7"
   },
   "dependencies": {
-    "@tauri-apps/api": "^2.10.1"
+    "@gsap/react": "^2.1.2",
+    "@tauri-apps/api": "^2.10.1",
+    "@tauri-apps/plugin-dialog": "^2.4.0",
+    "@tauri-apps/plugin-log": "^2.7.0",
+    "gsap": "^3.13.0",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1"
   }
 }
