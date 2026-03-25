@@ -2,17 +2,28 @@
 
 ## Dependencias JS (root)
 
-- `@tauri-apps/cli` — ejecución/build Tauri
+- `react`, `react-dom` — UI principal
+- `vite` — bundler/dev server
+- `typescript` — tipado estático
+- `tailwindcss`, `@tailwindcss/vite` — styling y build CSS
+- `gsap`, `@gsap/react` — animaciones no intrusivas
+- `vitest`, `@testing-library/react`, `@testing-library/jest-dom`, `jsdom` — testing frontend
+- `oxlint` — lint frontend con reglas estrictas
+- `@tauri-apps/cli` — ejecución y build Tauri
 - `@tauri-apps/api` — acceso API Tauri desde frontend
+- `@tauri-apps/plugin-dialog` — diálogo nativo de apertura
+- `@tauri-apps/plugin-log` — exposición de logs al frontend
 
 ## Dependencias Rust (`src-tauri/Cargo.toml`)
 
 - `tauri` — runtime principal
 - `tauri-plugin-dialog` — selector de archivos
-- `tauri-plugin-fs` — capacidades de filesystem
+- `tauri-plugin-log` — logging integrado con Tauri
 - `serde`, `serde_json` — serialización/perfiles
 - `dirs` — rutas de datos de aplicación
 - `base64` — previews tipo data URL
+- `thiserror` — modelado de errores tipados
+- `log` — macros y niveles de logging
 - `windows` — bindings Win32/COM
 
 ## APIs de Windows usadas
@@ -26,9 +37,11 @@
 
 ## Servicios internos
 
-- Logger persistente (`logger.rs`)
+- Logger persistente y consumo desde UI (`logger.rs`, `tauri-plugin-log`)
 - Gestión de perfiles (`profiles.rs`)
-- Render y estado UI (`app.js`)
+- Orquestación de wallpaper y monitores (`wallpaper.rs`)
+- Estado y composición de UI (`src/App.tsx` y `src/components/*`)
+- Wrappers de invocación Tauri (`src/lib/tauri.ts`)
 
 ## Capacidades Tauri
 
@@ -36,6 +49,15 @@ Archivo: `src-tauri/capabilities/default.json`
 
 Permisos relevantes:
 
-- diálogo de apertura de archivos
-- lectura de filesystem
-- permisos core de ventana
+- `core:default`
+- `dialog:default`
+- `dialog:allow-open`
+- `core:window:default`
+- `core:window:allow-set-title`
+- `log:default`
+
+## Consideraciones de seguridad
+
+- `withGlobalTauri` está desactivado para evitar exponer la API Tauri globalmente.
+- La CSP sólo permite recursos propios, `data:` para imágenes/fuentes y los endpoints locales de desarrollo necesarios en Vite.
+- Los comandos IPC validan entradas y devuelven errores serializados estables al frontend.
