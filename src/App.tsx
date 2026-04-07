@@ -15,6 +15,7 @@ import {
     applyConfiguration,
     applyWallpaper,
     clearLogs,
+    confirmDialog,
     deleteProfile,
     draftsToProfileMonitors,
     fetchMonitors,
@@ -268,7 +269,7 @@ export default function App() {
                 setIsLoadingMonitors(false);
             }
         },
-        [pushToast, syncDraftsFromMonitors],
+        [pushToast, syncDraftsFromMonitors, t],
     );
 
     useEffect(() => {
@@ -428,7 +429,7 @@ export default function App() {
                 pushToast(t('monitor.applyFailed', { error: formatError(error) }), 'error');
             }
         },
-        [drafts, pushToast],
+        [drafts, pushToast, t],
     );
 
     const handleApplyConfiguration = useCallback(async () => {
@@ -452,7 +453,7 @@ export default function App() {
             await logClient('apply', `apply_configuration error: ${formatError(error)}`, 'error');
             pushToast(t('apply.failed', { error: formatError(error) }), 'error');
         }
-    }, [drafts, fallbackIdsDetected, pushToast, sortedMonitors]);
+    }, [drafts, fallbackIdsDetected, pushToast, sortedMonitors, t]);
 
     const handleOpenEditor = useCallback(
         async (monitorId: string) => {
@@ -514,7 +515,7 @@ export default function App() {
             pushToast(t('editor.saved'), 'success');
             await logClient('editor', `save success for ${monitorId}`, 'info');
         },
-        [pushToast],
+        [pushToast, t],
     );
 
     const handleIdentifyMonitors = useCallback(async () => {
@@ -589,7 +590,10 @@ export default function App() {
             return;
         }
 
-        if (!window.confirm(t('profile.deleteConfirm', { name: selectedProfileName }))) {
+        const confirmed = await confirmDialog(
+            t('profile.deleteConfirm', { name: selectedProfileName }),
+        );
+        if (!confirmed) {
             return;
         }
 
@@ -628,7 +632,7 @@ export default function App() {
         } catch (error) {
             pushToast(t('logsModal.clearFailed', { error: formatError(error) }), 'error');
         }
-    }, [logsModalOpen, pushToast, refreshLogsModal]);
+    }, [logsModalOpen, pushToast, refreshLogsModal, t]);
 
     return (
         <div

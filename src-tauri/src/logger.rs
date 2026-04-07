@@ -20,6 +20,14 @@ fn app_logs_dir() -> AppResult<PathBuf> {
     Ok(directory)
 }
 
+/// Devuelve el directorio de logs sin crearlo; útil para health check.
+pub fn logs_dir_for_health() -> AppResult<PathBuf> {
+    let base = dirs::data_dir()
+        .or_else(dirs::config_dir)
+        .ok_or_else(|| AppError::runtime("Cannot determine app data directory for logs"))?;
+    Ok(base.join("WallpaperManager").join("logs"))
+}
+
 fn app_log_file() -> AppResult<PathBuf> {
     Ok(app_logs_dir()?.join(LOG_FILE_NAME))
 }
@@ -34,7 +42,11 @@ fn now_epoch_secs() -> u64 {
 fn rotate_if_needed(path: &PathBuf) -> AppResult<()> {
     if let Ok(metadata) = fs::metadata(path) {
         if metadata.len() > MAX_LOG_BYTES {
-            fs::write(path, "").map_err(|source| AppError::io("Failed to rotate log file", source))?;
+            let bak = path.with_extension("log.bak");
+            // Intentamos renombrar; si falla (mismo volumen o permisos) truncamos directamente.
+            if fs::rename(path, &bak).is_err() {
+                fs::write(path, "").map_err(|source| AppError::io("Failed to rotate log file", source))?;
+            }
         }
     }
     Ok(())

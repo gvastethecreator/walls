@@ -30,6 +30,14 @@ fn profiles_dir() -> AppResult<PathBuf> {
     Ok(directory)
 }
 
+/// Devuelve el directorio de perfiles sin crearlo; útil para health check.
+pub fn profiles_dir_for_health() -> AppResult<PathBuf> {
+    let base = dirs::data_dir()
+        .or_else(dirs::config_dir)
+        .ok_or_else(|| AppError::runtime("Cannot determine app data directory"))?;
+    Ok(base.join("WallpaperManager").join("profiles"))
+}
+
 fn profile_path(name: &str) -> AppResult<PathBuf> {
     let sanitized = sanitize_profile_name(name);
     Ok(profiles_dir()?.join(format!("{sanitized}.json")))
@@ -72,7 +80,15 @@ fn validate_profile_name(name: &str) -> AppResult<()> {
     Ok(())
 }
 
+const MAX_PROFILE_MONITORS: usize = 32;
+
 fn validate_profile_monitors(monitors: &[ProfileMonitor]) -> AppResult<()> {
+    if monitors.len() > MAX_PROFILE_MONITORS {
+        return Err(AppError::validation(format!(
+            "Profile contains too many monitors (max {MAX_PROFILE_MONITORS})"
+        )));
+    }
+
     let mut seen = HashSet::new();
     for monitor in monitors {
         if monitor.monitor_id.trim().is_empty() {
@@ -90,6 +106,12 @@ fn validate_profile_monitors(monitors: &[ProfileMonitor]) -> AppResult<()> {
             return Err(AppError::validation(format!(
                 "Unsupported fit mode in profile: {}",
                 monitor.fit_mode
+            )));
+        }
+        if monitor.image_path.len() > 4096 {
+            return Err(AppError::validation(format!(
+                "Image path too long for monitor: {}",
+                monitor.monitor_id
             )));
         }
     }
@@ -203,6 +225,28 @@ mod tests {
             fit_mode: "Whatever".to_string(),
         }];
         assert!(validate_profile_monitors(&invalid_fit).is_err());
+    }
+
+    #[test]
+    fn validate_profile_monitors_rejects_too_many() {
+        let monitors: Vec<ProfileMonitor> = (0..=MAX_PROFILE_MONITORS)
+            .map(|i| ProfileMonitor {
+                monitor_id: format!("MON{i}"),
+                image_path: "a.png".to_string(),
+                fit_mode: "Fill".to_string(),
+            })
+            .collect();
+        assert!(validate_profile_monitors(&monitors).is_err());
+    }
+
+    #[test]
+    fn validate_profile_monitors_rejects_long_image_path() {
+        let monitors = vec![ProfileMonitor {
+            monitor_id: "MON1".to_string(),
+            image_path: "x".repeat(4097),
+            fit_mode: "Fill".to_string(),
+        }];
+        assert!(validate_profile_monitors(&monitors).is_err());
     }
 
     #[test]

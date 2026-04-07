@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import { open } from '@tauri-apps/plugin-dialog';
+import { confirm, open } from '@tauri-apps/plugin-dialog';
 import {
   attachConsole,
   debug as logDebug,
@@ -163,6 +163,30 @@ export async function saveEditedWallpaper(
   dataUrl: string,
 ): Promise<string> {
   return invokeCommand<string>('save_edited_wallpaper', { monitorId, dataUrl });
+}
+
+/** Resultado del health check del sistema. */
+export interface HealthCheckResult {
+  comOk: boolean;
+  monitorCount: number;
+  profilesDirOk: boolean;
+  logsDirOk: boolean;
+  editedDirOk: boolean;
+  issues: string[];
+}
+
+/** Verifica el estado del subsistema COM, monitores y directorios de datos. */
+export async function healthCheck(): Promise<HealthCheckResult> {
+  return invokeCommand<HealthCheckResult>('health_check');
+}
+
+/** Muestra un diálogo de confirmación nativo de Tauri. */
+export async function confirmDialog(
+  message: string,
+  title?: string,
+): Promise<boolean> {
+  const options = title ? { title, kind: 'warning' as const } : { kind: 'warning' as const };
+  return confirm(message, options);
 }
 
 /** Convierte el estado actual de borradores en el formato de perfil persistible. */

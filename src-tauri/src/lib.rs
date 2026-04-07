@@ -320,6 +320,110 @@ async fn identify_monitors(
 	Ok(())
 }
 
+/// Resultado del chequeo de salud del sistema.
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct HealthCheckResult {
+	com_ok: bool,
+	monitor_count: u32,
+	profiles_dir_ok: bool,
+	logs_dir_ok: bool,
+	edited_dir_ok: bool,
+	issues: Vec<String>,
+}
+
+#[tauri::command]
+async fn health_check(state: State<'_, AppState>) -> CommandResult<HealthCheckResult> {
+	let wallpaper_lock = state.wallpaper_lock.clone();
+
+	run_blocking("health_check", move || {
+		logger::info("backend", "health_check called");
+		let mut issues = Vec::new();
+
+		// Verificar COM y acceso a monitores.
+		let (com_ok, monitor_count) = {
+			let _guard = wallpaper_lock
+				.lock()
+				.map_err(|_| AppError::runtime("Wallpaper state lock poisoned"))?;
+			match wallpaper::get_monitors() {
+				Ok(monitors) => (true, monitors.len() as u32),
+				Err(error) => {
+					issues.push(format!("COM/wallpaper subsystem: {error}"));
+					(false, 0)
+				}
+			}
+		};
+
+		// Verificar directorio de perfiles.
+		let profiles_dir_ok = match profiles::profiles_dir_for_health() {
+			Ok(path) => {
+				if path.is_dir() {
+					true
+				} else {
+					issues.push(format!("Profiles dir not found: {}", path.display()));
+					false
+				}
+			}
+			Err(error) => {
+				issues.push(format!("Profiles dir error: {error}"));
+				false
+			}
+		};
+
+		// Verificar directorio de logs.
+		let logs_dir_ok = match logger::logs_dir_for_health() {
+			Ok(path) => {
+				if path.is_dir() {
+					true
+				} else {
+					issues.push(format!("Logs dir not found: {}", path.display()));
+					false
+				}
+			}
+			Err(error) => {
+				issues.push(format!("Logs dir error: {error}"));
+				false
+			}
+		};
+
+		// Verificar directorio de wallpapers editados.
+		let edited_dir_ok = match edited_wallpapers_dir() {
+			Ok(path) => {
+				if path.is_dir() {
+					true
+				} else {
+					issues.push(format!("Edited wallpapers dir not found: {}", path.display()));
+					false
+				}
+			}
+			Err(error) => {
+				issues.push(format!("Edited wallpapers dir error: {error}"));
+				false
+			}
+		};
+
+		let result = HealthCheckResult {
+			com_ok,
+			monitor_count,
+			profiles_dir_ok,
+			logs_dir_ok,
+			edited_dir_ok,
+			issues,
+		};
+		logger::info(
+			"backend",
+			&format!(
+				"health_check done: com={} monitors={} issues={}",
+				result.com_ok,
+				result.monitor_count,
+				result.issues.len()
+			),
+		);
+		Ok(result)
+	})
+	.await
+}
+
 #[allow(non_snake_case)]
 #[tauri::command]
 async fn get_image_data_url(imagePath: String) -> CommandResult<String> {
@@ -415,6 +519,7 @@ pub fn run() {
 			identify_monitors,
 			get_image_data_url,
 			save_edited_wallpaper,
+			health_check,
 		]);
 
 	if let Err(error) = builder.run(tauri::generate_context!()) {
