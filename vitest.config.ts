@@ -9,7 +9,7 @@ export default mergeConfig(
       environment: 'jsdom',
       globals: true,
       css: true,
-      setupFiles: './src/test/setup.ts',
+      setupFiles: './test/setup.ts',
       coverage: {
         provider: 'istanbul',
         reporter: ['text', 'html'],

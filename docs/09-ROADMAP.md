@@ -1,19 +1,19 @@
-# Roadmap Técnico
+# Technical Roadmap
 
-## Corto plazo
+## Short Term
 
-- Modularizar `app.js` en archivos pequeños.
-- Agregar rotación de logs por tamaño.
-- Añadir comando `health_check` (estado COM, monitor count, rutas AppData).
+- ~~Modularize `app.js` into smaller files.~~ *(Done — React components.)*
+- Add log rotation by size.
+- Add `health_check` command (COM status, monitor count, AppData paths).
 
-## Mediano plazo
+## Medium Term
 
-- Tests de integración para comandos Tauri.
-- Export/import de perfiles.
-- Historial de configuraciones recientes.
+- Integration tests for Tauri commands.
+- Profile export/import.
+- Recent configuration history.
 
-## Largo plazo
+## Long Term
 
-- Soporte multi-idioma en UI.
-- Plugin de wallpapers dinámicos (manteniendo feature flag).
-- Instalador con actualización automática.
+- ~~Multi-language UI support.~~ *(Done — i18n with EN/ES.)*
+- Dynamic wallpaper plugin (with feature flag).
+- Installer with automatic updates.

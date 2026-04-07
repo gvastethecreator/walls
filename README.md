@@ -1,113 +1,116 @@
-# Wallpaper Manager (Windows)
+# Walls - Multi-Monitor Wallpaper Manager (Windows)
 
-Aplicación de escritorio para **Windows 10/11** construida con **Tauri 2 + Rust + React 19 + TypeScript + Vite 8 + Bun** para gestionar fondos por monitor, perfiles reutilizables, edición ligera de imagen y diagnóstico con logs unificados.
+A desktop application for **Windows 10/11** built with **Tauri 2 + Rust + React 19 + TypeScript + Vite 8 + Bun** for managing wallpapers per monitor, reusable profiles, lightweight image editing, and unified log diagnostics.
 
-## Qué hace
+## Features
 
-- Detecta monitores conectados usando `IDesktopWallpaper` (con apoyo de GDI para geometrías y visualización).
-- Permite asignar por monitor:
-  - imagen local
-  - color sólido
-  - sin fondo
-- Soporta modos de ajuste `Center`, `Tile`, `Stretch`, `Fit`, `Fill` y `Span`.
-- Guarda, carga, lista y elimina perfiles JSON en `%APPDATA%/WallpaperManager/profiles`.
-- Incluye editor ligero para recorte/ajustes visuales antes de aplicar.
-- Muestra logs persistentes desde la UI para diagnóstico rápido.
+- Detects connected monitors using `IDesktopWallpaper` (with GDI support for geometry and visualization).
+- Per-monitor assignment:
+  - Local image
+  - Solid color
+  - No background
+- Fit modes: `Center`, `Tile`, `Stretch`, `Fit`, `Fill`, `Span`.
+- Save, load, list, and delete JSON profiles at `%APPDATA%/WallpaperManager/profiles`.
+- Lightweight editor for crop/visual adjustments before applying.
+- Persistent logs visible from the UI for quick diagnostics.
+- Internationalization (English / Spanish).
 
-## Stack actual
+## Tech Stack
 
 ### Frontend
 
 - **React 19** + **TypeScript**
 - **Vite 8**
-- **Tailwind CSS 4** con tokens en `src/styles.css`
-- **GSAP** para animaciones ligeras y overlay de identificación
-- **Vitest** + Testing Library para pruebas frontend
-- **OXC / oxlint** para linting
+- **Tailwind CSS 4** with tokens in `src/styles.css`
+- **GSAP** for lightweight animations and identification overlay
+- **Vitest** + Testing Library for frontend tests
+- **OXC / oxlint** for linting
 
 ### Backend
 
 - **Tauri 2**
 - **Rust 2021**
-- **thiserror** para errores internos tipados
-- **tauri-plugin-log** para logging unificado
-- Win32 vía crate **windows** para integración con wallpaper/monitores
+- **thiserror** for typed internal errors
+- **tauri-plugin-log** for unified logging
+- Win32 via the **windows** crate for wallpaper/monitor integration
 
-## Arquitectura resumida
+## Architecture
 
-- `src/` contiene el frontend React/Vite.
-- `src-tauri/` contiene el backend Rust, comandos IPC y configuración Tauri.
-- Los comandos Tauri devuelven errores serializados y validan entrada antes de operar.
-- Las operaciones potencialmente bloqueantes se derivan a `spawn_blocking`.
-- Se usa `tauri::State` para serializar operaciones globales de wallpaper y evitar condiciones de carrera.
-- `withGlobalTauri` está desactivado y las capabilities están reducidas al mínimo necesario.
+- `src/` contains the React/Vite frontend.
+- `src-tauri/` contains the Rust backend, IPC commands, and Tauri configuration.
+- Tauri commands return serialized errors and validate input before operating.
+- Potentially blocking operations are dispatched to `spawn_blocking`.
+- `tauri::State` is used to serialize global wallpaper operations and avoid race conditions.
+- `withGlobalTauri` is disabled and capabilities are reduced to the minimum required.
 
-## Estructura principal
+## Project Structure
 
-- `src/App.tsx`: flujo principal de la aplicación
-- `src/components/`: tarjetas de monitor, layout y editor
-- `src/lib/tauri.ts`: wrappers tipados sobre IPC/plugins Tauri
-- `src/lib/wallpaper.ts`: utilidades puras de dominio y normalización
-- `src-tauri/src/lib.rs`: wiring principal de Tauri y comandos
-- `src-tauri/src/wallpaper.rs`: integración Windows para wallpaper/monitores
-- `src-tauri/src/profiles.rs`: persistencia y validación de perfiles
-- `src-tauri/src/logger.rs`: acceso a logs persistentes
-- `docs/`: documentación técnica y auditoría
+- `src/App.tsx`: Main application flow
+- `src/components/`: Monitor cards, layout, and editor
+- `src/i18n/`: Internationalization system (EN/ES)
+- `src/lib/tauri.ts`: Typed wrappers over Tauri IPC/plugins
+- `src/lib/wallpaper.ts`: Pure domain utilities and normalization
+- `src-tauri/src/lib.rs`: Main Tauri wiring and commands
+- `src-tauri/src/wallpaper.rs`: Windows integration for wallpaper/monitors
+- `src-tauri/src/profiles.rs`: Profile persistence and validation
+- `src-tauri/src/logger.rs`: Persistent log access
+- `docs/`: Technical documentation
 
-## Requisitos
+## Requirements
 
 - Windows 10/11
 - [Bun](https://bun.sh/)
-- Rust toolchain estable
-- Microsoft Visual C++ Build Tools si el entorno aún no está preparado para compilar crates nativos
+- Stable Rust toolchain
+- Microsoft Visual C++ Build Tools (if the environment is not already configured to compile native crates)
 
-## Desarrollo
+## Getting Started
 
-### Flujo habitual
+```sh
+bun install
+bun run dev
+```
 
-- `bun install`
-- `bun run dev`
+This starts Vite at `http://localhost:3000` and Tauri uses that URL in development.
 
-Esto levanta Vite en `http://127.0.0.1:1420` y Tauri usa esa URL en desarrollo.
+## Scripts
 
-### Scripts útiles
+| Script | Description |
+|---|---|
+| `bun run dev` | Full Tauri + Vite dev |
+| `bun run web:dev` | Vite frontend only |
+| `bun run web:build` | Frontend build |
+| `bun run typecheck` | Strict TypeScript check |
+| `bun run lint:frontend` | oxlint with denied warnings |
+| `bun run test:frontend` | Frontend tests with coverage |
+| `bun run test:rust` | `cargo test --lib` |
+| `bun run lint:backend` | `cargo clippy -- -D warnings` |
+| `bun run check:rust` | `cargo check` |
+| `bun run verify` | Full project verification |
+| `bun run build` | Tauri release build |
 
-- `bun run web:dev` — solo frontend Vite
-- `bun run web:build` — build frontend
-- `bun run typecheck` — TypeScript estricto
-- `bun run lint:frontend` — oxlint con warnings denegados
-- `bun run test:frontend` — pruebas frontend con cobertura
-- `bun run test:rust` — `cargo test --lib`
-- `bun run lint:backend` — `cargo clippy -- -D warnings`
-- `bun run check:rust` — `cargo check`
-- `bun run verify` — verificación integral del proyecto
-- `bun run build` — build release Tauri
+## Verification
 
-## Verificación recomendada
+Before closing an important change:
 
-Antes de cerrar una intervención importante:
+```sh
+bun run verify
+bunx tauri build
+```
 
-- `bun run verify`
-- `bunx tauri build`
+The release executable is at `src-tauri/target/release/wallpaper-manager.exe`.
 
-El ejecutable release queda en `src-tauri/target/release/wallpaper-manager.exe`.
+## Security and Observability
 
-## Seguridad y observabilidad
-
-- CSP endurecida en `src-tauri/tauri.conf.json`
+- Hardened CSP in `src-tauri/tauri.conf.json`
 - `withGlobalTauri = false`
-- Capabilities mínimas en `src-tauri/capabilities/default.json`
-- Logging unificado con `tauri-plugin-log`
-- Logs persistentes en `%APPDATA%/WallpaperManager/logs/app.log`
+- Minimal capabilities in `src-tauri/capabilities/default.json`
+- Unified logging with `tauri-plugin-log`
+- Persistent logs at `%APPDATA%/WallpaperManager/logs/app.log`
 
-## Estado del proyecto
+## Documentation
 
-La base actual ya está modernizada y validada con build real. Quedan mejoras futuras documentadas en:
+See `docs/INDEX.md` for the full map of architecture, implementation, testing, structure, and roadmap.
 
-- `docs/10-ACTUALIZACION-STACK-2026-03-24.md`
-- `docs/11-DEUDA-TECNICA.md`
-- `tmp/2026-03-24-puesta-a-punto.md`
+## License
 
-## Documentación adicional
-
-Consulta `docs/INDEX.md` para el mapa completo de arquitectura, implementación, testing, estructura y roadmap.
+MIT

@@ -1,50 +1,50 @@
-# PRD Técnico — Multi-Monitor Wallpaper Manager
+# Technical PRD - Multi-Monitor Wallpaper Manager
 
-## Objetivo del producto
+## Product Goal
 
-Ofrecer una herramienta ligera para Windows que permita configurar fondos de pantalla por monitor con una experiencia simple, rápida y observable (logs + pruebas).
+Provide a lightweight Windows tool for configuring wallpapers per monitor with a simple, fast, and observable experience (logs + tests).
 
-## Público objetivo
+## Target Audience
 
-- Usuarios con 2+ monitores en Windows 10/11.
-- Usuarios que alternan configuraciones de trabajo/gaming/productividad.
+- Users with 2+ monitors on Windows 10/11.
+- Users who alternate between work/gaming/productivity configurations.
 
-## Alcance funcional
+## Functional Scope
 
-### Funcionalidades implementadas
+### Implemented Features
 
-1. **Detección de monitores**
-   - Primaria: `IDesktopWallpaper`
-   - Fallback visual: GDI (`EnumDisplayMonitors`)
-2. **Configuración por monitor**
-   - Imagen local
-   - Color sólido
-   - Sin fondo
-3. **Wallpaper fit**
+1. **Monitor Detection**
+   - Primary: `IDesktopWallpaper`
+   - Visual fallback: GDI (`EnumDisplayMonitors`)
+2. **Per-Monitor Configuration**
+   - Local image
+   - Solid color
+   - No background
+3. **Wallpaper Fit**
    - `Center`, `Tile`, `Stretch`, `Fit`, `Fill`, `Span`
-4. **Perfiles**
-   - Guardar, cargar, listar, borrar
-5. **Observabilidad**
-   - Logging persistente en `%APPDATA%/WallpaperManager/logs/app.log`
-   - Visor de logs en la interfaz
+4. **Profiles**
+   - Save, load, list, delete
+5. **Observability**
+   - Persistent logging at `%APPDATA%/WallpaperManager/logs/app.log`
+   - In-app log viewer
 
-### Fuera de alcance actual
+### Out of Current Scope
 
-- Fondos animados/video
-- Integración con APIs de descarga (Unsplash/Wallhaven)
-- Soporte macOS/Linux
+- Animated/video wallpapers
+- Integration with download APIs (Unsplash/Wallhaven)
+- macOS/Linux support
 
-## Requisitos no funcionales
+## Non-Functional Requirements
 
-- **Estabilidad**: evitar errores silenciosos; reportar estados en UI + logs.
-- **Rendimiento**: previews en cache y carga asíncrona.
-- **Mantenibilidad**: estructura modular en Rust y tareas de build/test en VS Code.
+- **Stability**: avoid silent errors; report states in UI + logs.
+- **Performance**: cached previews and async loading.
+- **Maintainability**: modular Rust structure and VS Code build/test tasks.
 
-## Criterios de aceptación (estado)
+## Acceptance Criteria (Status)
 
-- [x] Configurar fondo por monitor
-- [x] Aplicar color sólido por monitor
-- [x] Limpiar fondo por monitor
-- [x] Gestionar perfiles
-- [x] Visualizar logs de ejecución
-- [x] Ejecutar tests unitarios de backend
+- [x] Configure wallpaper per monitor
+- [x] Apply solid color per monitor
+- [x] Clear wallpaper per monitor
+- [x] Manage profiles
+- [x] View execution logs
+- [x] Run backend unit tests

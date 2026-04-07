@@ -1,4 +1,5 @@
 import { memo } from 'react';
+import { useI18n } from '../i18n';
 import type { FitMode, MonitorInfo, WallpaperDraft, WallpaperSourceType } from '../lib/types';
 import {
     FIT_OPTIONS,
@@ -40,6 +41,7 @@ export const MonitorCard = memo(function MonitorCard({
     onEdit,
     onApply,
 }: MonitorCardProps) {
+    const { t } = useI18n();
     const source = parseWallpaperSource(draft.imagePath);
     const hasImage = source.type === 'image' && source.imagePath.length > 0;
     const fitMode = normalizeFitMode(draft.fitMode);
@@ -64,7 +66,7 @@ export const MonitorCard = memo(function MonitorCard({
                     <span className="truncate text-sm font-semibold">{monitor.name}</span>
                     {dirty ? (
                         <span className="rounded-full bg-emerald-400 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-[#052b1c]">
-                            Pending
+                            {t('monitor.pending')}
                         </span>
                     ) : null}
                 </div>
@@ -90,14 +92,14 @@ export const MonitorCard = memo(function MonitorCard({
                             <>
                                 <div className="absolute inset-0" style={{ background: source.color }} />
                                 <div className="absolute bottom-3 left-3 z-10 rounded-full border border-white/10 bg-black/60 px-2 py-1 text-[11px] text-white backdrop-blur-sm">
-                                    Solid Color {source.color}
+                                    {t('monitor.solidColor', { color: source.color })}
                                 </div>
                             </>
                         ) : source.type === 'none' ? (
                             <>
                                 <div className="absolute inset-0 bg-black" />
                                 <div className="absolute bottom-3 left-3 z-10 rounded-full border border-white/10 bg-black/60 px-2 py-1 text-[11px] text-white backdrop-blur-sm">
-                                    No Background
+                                    {t('monitor.noBackground')}
                                 </div>
                             </>
                         ) : hasImage && previewUrl ? (
@@ -127,17 +129,17 @@ export const MonitorCard = memo(function MonitorCard({
                                 <div className="absolute inset-0 bg-black" />
                                 <div className="absolute inset-0 flex items-center justify-center text-xs text-white/80">
                                     {isPreviewLoading
-                                        ? 'Loading preview...'
+                                        ? t('monitor.loadingPreview')
                                         : hasPreviewError
-                                            ? 'No preview available'
-                                            : 'No wallpaper detected'}
+                                            ? t('monitor.noPreview')
+                                            : t('monitor.noWallpaper')}
                                 </div>
                             </>
                         )}
 
                         <div className="absolute inset-0 flex items-center justify-center bg-black/45 opacity-0 transition duration-150 group-hover:opacity-100">
                             <span className="rounded-md bg-[#21242a]/90 px-2.5 py-1.5 text-[11px] font-medium text-white">
-                                Browse Image
+                                {t('monitor.browseImage')}
                             </span>
                         </div>
                     </div>
@@ -150,7 +152,7 @@ export const MonitorCard = memo(function MonitorCard({
                         className="pl-1 text-[10px] font-semibold uppercase tracking-[0.5px]"
                         style={{ color: 'var(--text-secondary)' }}
                     >
-                        BG
+                        {t('monitor.bgLabel')}
                     </span>
                     <select
                         className="input-select"
@@ -159,9 +161,9 @@ export const MonitorCard = memo(function MonitorCard({
                             onSourceChange(monitor.id, event.target.value as WallpaperSourceType)
                         }
                     >
-                        <option value="image">Image</option>
-                        <option value="solid">Solid Color</option>
-                        <option value="none">No Background</option>
+                        <option value="image">{t('source.image')}</option>
+                        <option value="solid">{t('source.solid')}</option>
+                        <option value="none">{t('source.none')}</option>
                     </select>
                     {source.type === 'solid' ? (
                         <input
@@ -180,7 +182,7 @@ export const MonitorCard = memo(function MonitorCard({
                         className="pl-1 text-[10px] font-semibold uppercase tracking-[0.5px]"
                         style={{ color: 'var(--text-secondary)' }}
                     >
-                        Fit
+                        {t('monitor.fitLabel')}
                     </span>
                     <select
                         className="input-select"
@@ -202,13 +204,13 @@ export const MonitorCard = memo(function MonitorCard({
                         type="button"
                         onClick={() => onClear(monitor.id)}
                     >
-                        Clear
+                        {t('monitor.clear')}
                     </button>
                     <button className="btn btn-secondary" type="button" onClick={() => onEdit(monitor.id)}>
-                        Edit
+                        {t('monitor.edit')}
                     </button>
                     <button className="btn btn-secondary" type="button" onClick={() => onApply(monitor.id)}>
-                        Apply Monitor
+                        {t('monitor.apply')}
                     </button>
                 </div>
             </div>

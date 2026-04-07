@@ -23,3 +23,9 @@ Thumbs.db
 
 # Tauri generated bundles (if produced in project tree)
 src-tauri/gen/schemas/*.tmp
+
+# Temporary working files
+tmp/
+
+# Generated coverage reports
+src/coverage/

@@ -7,6 +7,7 @@ import {
     type PointerEvent as ReactPointerEvent,
     type WheelEvent as ReactWheelEvent,
 } from 'react';
+import { useI18n } from '../i18n';
 import type { FitMode, MonitorInfo } from '../lib/types';
 import { formatError, normalizeColorHex } from '../lib/wallpaper';
 
@@ -65,6 +66,7 @@ export function EditorDialog({
     resolvePreviewDataUrl,
     onSave,
 }: EditorDialogProps) {
+    const { t } = useI18n();
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const dragRef = useRef<DragState>({ active: false, lastX: 0, lastY: 0 });
 
@@ -129,7 +131,7 @@ export function EditorDialog({
             context.fillStyle = '#9aa0ad';
             context.font = '16px Segoe UI';
             context.textAlign = 'center';
-            context.fillText('Choose an image to start editing', canvas.width / 2, canvas.height / 2);
+            context.fillText(t('editor.noImagePrompt'), canvas.width / 2, canvas.height / 2);
             return;
         }
 
@@ -147,7 +149,7 @@ export function EditorDialog({
             context.fillStyle = hexToRgba(tintColor, tintStrength / 100);
             context.fillRect(0, 0, canvas.width, canvas.height);
         }
-    }, [blur, brightness, contrast, hue, image, offsetX, offsetY, rotationDeg, saturation, scale, tintColor, tintStrength]);
+    }, [blur, brightness, contrast, hue, image, offsetX, offsetY, rotationDeg, saturation, scale, t, tintColor, tintStrength]);
 
     const loadImagePath = useCallback(
         async (path: string) => {
@@ -192,10 +194,10 @@ export function EditorDialog({
 
     const title = useMemo(() => {
         if (!monitor) {
-            return 'Wallpaper Editor';
+            return t('editor.title');
         }
-        return `Wallpaper Editor · ${monitor.name}`;
-    }, [monitor]);
+        return t('editor.titleMonitor', { name: monitor.name });
+    }, [monitor, t]);
 
     const handlePointerDown = (event: ReactPointerEvent<HTMLCanvasElement>) => {
         dragRef.current = {
@@ -287,14 +289,14 @@ export function EditorDialog({
                     <div>
                         <h2 className="text-base font-semibold">{title}</h2>
                         <p className="mt-1 text-xs" style={{ color: 'var(--text-secondary)' }}>
-                            Drag image to move · Mouse wheel to zoom
+                            {t('editor.dragToMove')}
                         </p>
                     </div>
                     <span
                         className="rounded-full bg-white/5 px-3 py-1 text-[11px]"
                         style={{ color: 'var(--text-secondary)' }}
                     >
-                        Fit mode: {fitMode}
+                        {t('editor.fitMode', { mode: fitMode })}
                     </span>
                 </header>
 
@@ -316,46 +318,46 @@ export function EditorDialog({
 
                     <aside className="flex min-h-0 flex-col gap-3 overflow-y-auto rounded-xl border border-[#272c36] bg-[#12141a] p-3">
                         <button className="btn btn-secondary" type="button" onClick={() => void handlePickAnotherImage()}>
-                            Choose Image
+                            {t('editor.chooseImage')}
                         </button>
                         <button className="btn btn-secondary" type="button" onClick={() => resetAdjustments()}>
-                            Reset
+                            {t('editor.reset')}
                         </button>
 
                         <label className="editor-control">
-                            <span>Zoom</span>
+                            <span>{t('editor.zoom')}</span>
                             <input type="range" min="20" max="300" step="1" value={Math.round(scale * 100)} onChange={(event) => setScale(clampLocal(Number(event.target.value) / 100, 0.2, 8))} />
                         </label>
                         <label className="editor-control">
-                            <span>Rotation</span>
+                            <span>{t('editor.rotation')}</span>
                             <input type="range" min="-180" max="180" step="1" value={rotationDeg} onChange={(event) => setRotationDeg(Number(event.target.value))} />
                         </label>
                         <label className="editor-control">
-                            <span>Brightness</span>
+                            <span>{t('editor.brightness')}</span>
                             <input type="range" min="0" max="200" step="1" value={brightness} onChange={(event) => setBrightness(Number(event.target.value))} />
                         </label>
                         <label className="editor-control">
-                            <span>Contrast</span>
+                            <span>{t('editor.contrast')}</span>
                             <input type="range" min="0" max="200" step="1" value={contrast} onChange={(event) => setContrast(Number(event.target.value))} />
                         </label>
                         <label className="editor-control">
-                            <span>Saturation</span>
+                            <span>{t('editor.saturation')}</span>
                             <input type="range" min="0" max="200" step="1" value={saturation} onChange={(event) => setSaturation(Number(event.target.value))} />
                         </label>
                         <label className="editor-control">
-                            <span>Hue</span>
+                            <span>{t('editor.hue')}</span>
                             <input type="range" min="-180" max="180" step="1" value={hue} onChange={(event) => setHue(Number(event.target.value))} />
                         </label>
                         <label className="editor-control">
-                            <span>Blur</span>
+                            <span>{t('editor.blur')}</span>
                             <input type="range" min="0" max="12" step="0.1" value={blur} onChange={(event) => setBlur(Number(event.target.value))} />
                         </label>
                         <label className="editor-control">
-                            <span>Tint</span>
+                            <span>{t('editor.tint')}</span>
                             <input type="color" value={tintColor} onChange={(event) => setTintColor(normalizeColorHex(event.target.value))} />
                         </label>
                         <label className="editor-control">
-                            <span>Tint Strength</span>
+                            <span>{t('editor.tintStrength')}</span>
                             <input type="range" min="0" max="100" step="1" value={tintStrength} onChange={(event) => setTintStrength(Number(event.target.value))} />
                         </label>
                     </aside>
@@ -363,22 +365,22 @@ export function EditorDialog({
 
                 {isLoading ? (
                     <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-                        Loading image preview…
+                        {t('editor.loading')}
                     </p>
                 ) : null}
                 {workingImagePath ? (
                     <p className="truncate text-xs" style={{ color: 'var(--text-secondary)' }}>
-                        Source: {workingImagePath}
+                        {t('editor.source', { path: workingImagePath })}
                     </p>
                 ) : null}
                 {errorMessage ? <p className="text-xs text-rose-300">{errorMessage}</p> : null}
 
                 <div className="flex justify-end gap-2">
                     <button className="btn btn-secondary" type="button" onClick={onClose}>
-                        Cancel
+                        {t('editor.cancel')}
                     </button>
                     <button className="btn btn-primary" disabled={isLoading || isSaving || !image} type="button" onClick={() => void handleSave()}>
-                        {isSaving ? 'Saving…' : 'Save & Apply'}
+                        {isSaving ? t('editor.saving') : t('editor.saveApply')}
                     </button>
                 </div>
             </section>

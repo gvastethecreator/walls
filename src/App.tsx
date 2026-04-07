@@ -10,6 +10,7 @@ import {
 import { EditorDialog } from './components/EditorDialog';
 import { MonitorCard } from './components/MonitorCard';
 import { MonitorLayout } from './components/MonitorLayout';
+import { useI18n } from './i18n';
 import {
     applyConfiguration,
     applyWallpaper,
@@ -76,6 +77,7 @@ function wait(milliseconds: number): Promise<void> {
 export default function App() {
     const gridRef = useRef<HTMLDivElement>(null);
     const toastTimerRef = useRef<number | null>(null);
+    const { t, locale, setLocale } = useI18n();
 
     const [monitors, setMonitors] = useState<MonitorInfo[]>([]);
     const [drafts, setDrafts] = useState<Record<string, WallpaperDraft>>({});
@@ -113,13 +115,14 @@ export default function App() {
     );
     const statusSummary = useMemo(() => {
         if (!sortedMonitors.length) {
-            return 'Loading monitors…';
+            return t('status.loading');
         }
         if (dirtyCount > 0) {
-            return `${sortedMonitors.length} displays · ${dirtyCount} pending change${dirtyCount > 1 ? 's' : ''}`;
+            const key = dirtyCount > 1 ? 'status.pendingChanges' : 'status.pendingChange';
+            return `${t('status.displays', { count: sortedMonitors.length })} · ${t(key, { count: dirtyCount })}`;
         }
-        return `${sortedMonitors.length} displays · all applied`;
-    }, [dirtyCount, sortedMonitors.length]);
+        return `${t('status.displays', { count: sortedMonitors.length })} · ${t('status.allApplied')}`;
+    }, [dirtyCount, sortedMonitors.length, t]);
     const animationKey = useMemo(
         () => `${sortedMonitors.map((monitor) => monitor.id).join('|')}::${dirtyCount}`,
         [dirtyCount, sortedMonitors],
@@ -260,7 +263,7 @@ export default function App() {
                 await logClient('monitors', `get_monitors ok: ${nextMonitors.length} monitor(s)`, 'info');
             } catch (error) {
                 await logClient('monitors', `get_monitors error: ${formatError(error)}`, 'error');
-                pushToast(`Failed to detect monitors: ${formatError(error)}`, 'error');
+                pushToast(t('error.detectMonitors', { error: formatError(error) }), 'error');
             } finally {
                 setIsLoadingMonitors(false);
             }
@@ -341,7 +344,7 @@ export default function App() {
                 void resolvePreviewDataUrl(path).catch(() => undefined);
                 return path;
             } catch (error) {
-                pushToast(`Failed to open file dialog: ${formatError(error)}`, 'error');
+                pushToast(t('error.fileDialog', { error: formatError(error) }), 'error');
                 await logClient('browse', `dialog error: ${formatError(error)}`, 'error');
                 return null;
             }
@@ -408,7 +411,7 @@ export default function App() {
         async (monitorId: string) => {
             const draft = drafts[monitorId];
             if (!draft?.imagePath) {
-                pushToast('No wallpaper configured for this monitor', 'error');
+                pushToast(t('monitor.noWallpaperConfigured'), 'error');
                 return;
             }
 
@@ -419,10 +422,10 @@ export default function App() {
                 setBaseline((previous) =>
                     updateBaselineAfterSingleApply(previous, monitorId, nextDraft),
                 );
-                pushToast('Monitor applied successfully', 'success');
+                pushToast(t('monitor.applied'), 'success');
             } catch (error) {
                 await logClient('apply', `apply_wallpaper error: ${formatError(error)}`, 'error');
-                pushToast(`Apply monitor failed: ${formatError(error)}`, 'error');
+                pushToast(t('monitor.applyFailed', { error: formatError(error) }), 'error');
             }
         },
         [drafts, pushToast],
@@ -430,16 +433,13 @@ export default function App() {
 
     const handleApplyConfiguration = useCallback(async () => {
         if (fallbackIdsDetected) {
-            pushToast(
-                'Windows did not provide monitor IDs for this session. Per-monitor apply is disabled.',
-                'error',
-            );
+            pushToast(t('apply.fallbackDisabled'), 'error');
             return;
         }
 
         const configs = buildApplyConfiguration(sortedMonitors, drafts);
         if (!configs.length) {
-            pushToast('No wallpapers configured', 'error');
+            pushToast(t('apply.noWallpapers'), 'error');
             return;
         }
 
@@ -447,10 +447,10 @@ export default function App() {
             await logClient('apply', `apply_configuration start: ${configs.length} config(s)`, 'info');
             await applyConfiguration(configs);
             setBaseline(createSnapshotRecord(drafts));
-            pushToast('Configuration applied successfully', 'success');
+            pushToast(t('apply.success'), 'success');
         } catch (error) {
             await logClient('apply', `apply_configuration error: ${formatError(error)}`, 'error');
-            pushToast(`Apply failed: ${formatError(error)}`, 'error');
+            pushToast(t('apply.failed', { error: formatError(error) }), 'error');
         }
     }, [drafts, fallbackIdsDetected, pushToast, sortedMonitors]);
 
@@ -458,11 +458,11 @@ export default function App() {
         async (monitorId: string) => {
             const monitor = sortedMonitors.find((candidate) => candidate.id === monitorId);
             if (!monitor) {
-                pushToast('Monitor not found', 'error');
+                pushToast(t('error.monitorNotFound'), 'error');
                 return;
             }
             if (monitor.id.startsWith('GDI_MONITOR_')) {
-                pushToast('Editor unavailable in diagnostic mode for this monitor', 'error');
+                pushToast(t('error.editorDiagnostic'), 'error');
                 return;
             }
 
@@ -511,7 +511,7 @@ export default function App() {
             setPreviewCache((previous) => ({ ...previous, [savedPath]: dataUrl }));
             setPreviewPending((previous) => removeKey(previous, savedPath));
             setPreviewFailed((previous) => removeKey(previous, savedPath));
-            pushToast('Edited wallpaper saved and applied', 'success');
+            pushToast(t('editor.saved'), 'success');
             await logClient('editor', `save success for ${monitorId}`, 'info');
         },
         [pushToast],
@@ -519,26 +519,26 @@ export default function App() {
 
     const handleIdentifyMonitors = useCallback(async () => {
         if (!sortedMonitors.length) {
-            pushToast('No monitors detected', 'error');
+            pushToast(t('layout.noMonitors'), 'error');
             return;
         }
 
         try {
             await identifyMonitors();
-            pushToast('Showing monitor overlays', 'success');
+            pushToast(t('identify.showing'), 'success');
         } catch {
-            pushToast('Overlay unavailable, using in-app highlight', 'info');
+            pushToast(t('identify.fallback'), 'info');
             for (const monitor of sortedMonitors) {
                 setHighlightedMonitorId(monitor.id);
                 await wait(IDENTIFY_FALLBACK_DELAY_MS);
             }
             setHighlightedMonitorId(null);
         }
-    }, [pushToast, sortedMonitors]);
+    }, [pushToast, sortedMonitors, t]);
 
     const handleLoadSelectedProfile = useCallback(async () => {
         if (!selectedProfileName) {
-            pushToast('Select a profile first', 'error');
+            pushToast(t('profile.selectFirst'), 'error');
             return;
         }
 
@@ -558,16 +558,16 @@ export default function App() {
             }
 
             setDrafts(nextDrafts);
-            pushToast(`Profile "${selectedProfileName}" loaded`, 'success');
+            pushToast(t('profile.loaded', { name: selectedProfileName }), 'success');
         } catch (error) {
-            pushToast(`Load failed: ${formatError(error)}`, 'error');
+            pushToast(t('profile.loadFailed', { error: formatError(error) }), 'error');
         }
-    }, [pushToast, selectedProfileName, sortedMonitors]);
+    }, [pushToast, selectedProfileName, sortedMonitors, t]);
 
     const handleSaveCurrentProfile = useCallback(async () => {
         const name = profileNameInput.trim();
         if (!name) {
-            pushToast('Enter a profile name', 'error');
+            pushToast(t('profile.enterName'), 'error');
             return;
         }
 
@@ -577,19 +577,19 @@ export default function App() {
             setProfileNameInput('');
             setSelectedProfileName(name);
             await refreshProfiles();
-            pushToast(`Profile "${name}" saved`, 'success');
+            pushToast(t('profile.saved', { name }), 'success');
         } catch (error) {
-            pushToast(`Save failed: ${formatError(error)}`, 'error');
+            pushToast(t('profile.saveFailed', { error: formatError(error) }), 'error');
         }
-    }, [drafts, profileNameInput, pushToast, refreshProfiles]);
+    }, [drafts, profileNameInput, pushToast, refreshProfiles, t]);
 
     const handleDeleteSelectedProfile = useCallback(async () => {
         if (!selectedProfileName) {
-            pushToast('Select a profile to delete', 'error');
+            pushToast(t('profile.selectToDelete'), 'error');
             return;
         }
 
-        if (!window.confirm(`Delete profile "${selectedProfileName}"? This action cannot be undone.`)) {
+        if (!window.confirm(t('profile.deleteConfirm', { name: selectedProfileName }))) {
             return;
         }
 
@@ -597,20 +597,20 @@ export default function App() {
             await deleteProfile(selectedProfileName);
             await refreshProfiles();
             setSelectedProfileName('');
-            pushToast(`Profile "${selectedProfileName}" deleted`, 'success');
+            pushToast(t('profile.deleted', { name: selectedProfileName }), 'success');
         } catch (error) {
-            pushToast(`Delete failed: ${formatError(error)}`, 'error');
+            pushToast(t('profile.deleteFailed', { error: formatError(error) }), 'error');
         }
-    }, [pushToast, refreshProfiles, selectedProfileName]);
+    }, [pushToast, refreshProfiles, selectedProfileName, t]);
 
     const refreshLogsModal = useCallback(async () => {
         try {
             const content = await getLogs();
-            setLogsContent(content || 'No logs yet.');
+            setLogsContent(content || t('logsModal.noLogs'));
         } catch (error) {
-            setLogsContent(`Failed to load logs: ${formatError(error)}`);
+            setLogsContent(t('logsModal.loadFailed', { error: formatError(error) }));
         }
-    }, []);
+    }, [t]);
 
     const handleOpenLogsModal = useCallback(async () => {
         setLogsModalOpen(true);
@@ -621,12 +621,12 @@ export default function App() {
         try {
             await clearLogs();
             await logClient('logs', 'logs cleared by user', 'warn');
-            pushToast('Logs cleared', 'success');
+            pushToast(t('logsModal.cleared'), 'success');
             if (logsModalOpen) {
                 await refreshLogsModal();
             }
         } catch (error) {
-            pushToast(`Failed to clear logs: ${formatError(error)}`, 'error');
+            pushToast(t('logsModal.clearFailed', { error: formatError(error) }), 'error');
         }
     }, [logsModalOpen, pushToast, refreshLogsModal]);
 
@@ -651,15 +651,25 @@ export default function App() {
                             <line x1="8" x2="16" y1="21" y2="21" />
                             <line x1="12" x2="12" y1="17" y2="21" />
                         </svg>
-                        <h1 className="text-sm font-semibold tracking-tight">Wallpaper Manager</h1>
+                        <h1 className="text-sm font-semibold tracking-tight">{t('app.title')}</h1>
                     </div>
                     <span className="rounded-full bg-[#1d1f24] px-3 py-1 text-[11px] text-[#d7d9de]">
                         {statusSummary}
                     </span>
                 </div>
-                <button className="btn btn-ghost" type="button" onClick={() => void loadMonitors(true)}>
-                    Refresh
-                </button>
+                <div className="flex items-center gap-2">
+                    <select
+                        className="input-select text-xs"
+                        value={locale}
+                        onChange={(event) => setLocale(event.target.value as 'en' | 'es')}
+                    >
+                        <option value="en">EN</option>
+                        <option value="es">ES</option>
+                    </select>
+                    <button className="btn btn-ghost" type="button" onClick={() => void loadMonitors(true)}>
+                        {t('app.refresh')}
+                    </button>
+                </div>
             </header>
 
             <section className="border-b border-white/5 bg-[#101115] px-3 py-2">
@@ -669,7 +679,7 @@ export default function App() {
                         value={selectedProfileName}
                         onChange={(event) => setSelectedProfileName(event.target.value)}
                     >
-                        <option value="">— Select Profile —</option>
+                        <option value="">{t('profile.select')}</option>
                         {profiles.map((profile) => (
                             <option key={profile} value={profile}>
                                 {profile}
@@ -677,19 +687,19 @@ export default function App() {
                         ))}
                     </select>
                     <button className="btn btn-secondary" type="button" onClick={() => void handleLoadSelectedProfile()}>
-                        Load Profile
+                        {t('profile.load')}
                     </button>
                     <button className="btn btn-secondary" type="button" onClick={() => setSaveModalOpen(true)}>
-                        Save Profile
+                        {t('profile.save')}
                     </button>
                     <button className="btn btn-danger" type="button" onClick={() => void handleDeleteSelectedProfile()}>
-                        Delete Profile
+                        {t('profile.delete')}
                     </button>
                     <button className="btn btn-secondary" type="button" onClick={() => void handleOpenLogsModal()}>
-                        View Logs
+                        {t('profile.logs')}
                     </button>
                     <button className="btn btn-secondary" type="button" onClick={() => void handleClearLogs()}>
-                        Clear Logs
+                        {t('profile.clearLogs')}
                     </button>
                 </div>
             </section>
@@ -698,19 +708,19 @@ export default function App() {
                 <section className="mx-auto max-w-350">
                     <div className="mb-2 flex items-center justify-between gap-3">
                         <div>
-                            <h2 className="text-[13px] font-bold uppercase tracking-[0.6px]">Layout</h2>
+                            <h2 className="text-[13px] font-bold uppercase tracking-[0.6px]">{t('layout.title')}</h2>
                             <p className="mt-1 text-xs" style={{ color: 'var(--text-secondary)' }}>
-                                Wallpaper fit is global on Windows and applies to all monitors.
+                                {t('layout.fitGlobal')}
                             </p>
                         </div>
                         <button className="btn btn-secondary" type="button" onClick={() => void handleIdentifyMonitors()}>
-                            Identify Monitors
+                            {t('layout.identify')}
                         </button>
                     </div>
 
                     {fallbackIdsDetected ? (
                         <p className="mb-3 rounded-md border border-[#d4c6a2]/20 bg-[#1d1a13] px-3 py-2 text-xs text-[#d4c6a2]">
-                            Diagnostic mode: Windows did not return monitor IDs. You can inspect layout, but per-monitor apply is limited in this session.
+                            {t('layout.diagnosticMode')}
                         </p>
                     ) : null}
 
@@ -726,7 +736,7 @@ export default function App() {
                                 style={{ background: 'var(--bg-card)', color: 'var(--text-secondary)' }}
                             >
                                 <div className="spinner" />
-                                <p>Detecting monitors…</p>
+                                <p>{t('layout.detecting')}</p>
                             </div>
                         ) : null}
 
@@ -735,7 +745,7 @@ export default function App() {
                                 className="col-span-full flex flex-col items-center gap-3 rounded-2xl border border-white/5 px-6 py-14"
                                 style={{ background: 'var(--bg-card)', color: 'var(--text-secondary)' }}
                             >
-                                <p>No monitors detected</p>
+                                <p>{t('layout.noMonitors')}</p>
                             </div>
                         ) : null}
 
@@ -772,7 +782,7 @@ export default function App() {
 
             <footer className="flex items-center justify-center px-3 py-3" style={{ background: 'var(--bg-secondary)' }}>
                 <button className="btn btn-primary min-w-65 justify-center" type="button" onClick={() => void handleApplyConfiguration()}>
-                    Apply Configuration
+                    {t('apply.button')}
                 </button>
             </footer>
 
@@ -783,11 +793,11 @@ export default function App() {
                         className="relative w-95 rounded-2xl border border-white/8 p-6 shadow-xl"
                         style={{ background: 'var(--bg-card)', boxShadow: 'var(--shadow-lg)' }}
                     >
-                        <h2 className="mb-4 text-base font-semibold">Save Profile</h2>
+                        <h2 className="mb-4 text-base font-semibold">{t('saveModal.title')}</h2>
                         <input
                             autoFocus
                             className="input-field"
-                            placeholder="Profile name..."
+                            placeholder={t('profile.namePlaceholder')}
                             type="text"
                             value={profileNameInput}
                             onChange={(event) => setProfileNameInput(event.target.value)}
@@ -802,10 +812,10 @@ export default function App() {
                         />
                         <div className="mt-4 flex justify-end gap-2">
                             <button className="btn btn-secondary" type="button" onClick={() => setSaveModalOpen(false)}>
-                                Cancel
+                                {t('saveModal.cancel')}
                             </button>
                             <button className="btn btn-primary" type="button" onClick={() => void handleSaveCurrentProfile()}>
-                                Save
+                                {t('saveModal.save')}
                             </button>
                         </div>
                     </section>
@@ -819,14 +829,14 @@ export default function App() {
                         className="relative flex h-[min(74vh,720px)] w-[min(92vw,980px)] flex-col rounded-2xl border border-white/8 p-6 shadow-xl"
                         style={{ background: 'var(--bg-card)', boxShadow: 'var(--shadow-lg)' }}
                     >
-                        <h2 className="mb-4 text-base font-semibold">Application Logs</h2>
+                        <h2 className="mb-4 text-base font-semibold">{t('logsModal.title')}</h2>
                         <pre className="logs-view flex-1">{logsContent}</pre>
                         <div className="mt-4 flex justify-end gap-2">
                             <button className="btn btn-secondary" type="button" onClick={() => void refreshLogsModal()}>
-                                Refresh Logs
+                                {t('logsModal.refresh')}
                             </button>
                             <button className="btn btn-primary" type="button" onClick={() => setLogsModalOpen(false)}>
-                                Close
+                                {t('logsModal.close')}
                             </button>
                         </div>
                     </section>
